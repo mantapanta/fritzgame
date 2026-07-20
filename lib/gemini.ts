@@ -270,23 +270,21 @@ export type SparesRecognition = {
 };
 
 /**
- * Doppel-Stapel: liest lose Sticker aus. Jeder Sticker trägt vorne eine Nummer
- * und gehört zu einem Land/Abschnitt (am Bild erkennbar).
+ * Doppel-Stapel: liest lose Sticker aus. Die Sticker liegen mit der RÜCKSEITE
+ * nach oben – dort ist der Sticker-Code/die Nummer aufgedruckt.
  */
 export async function recognizeSpares(
   images: string[]
 ): Promise<SparesRecognition> {
-  const prompt = `Auf den Fotos liegen lose Panini-Sticker der FIFA WM 2026 ausgebreitet (Doppelte zum Tauschen).
-Jeder Sticker trägt vorne eine Nummer; Team-Sticker gehören zu einem Land (Wappen/Trikot/Name erkennbar), Spezialsticker tragen Codes wie "00" oder "FWC5".
-Lies ALLE klar erkennbaren Sticker aus. Für jeden Sticker:
-- Team-Sticker: gib das Land (englischer Name) und die Nummer (1–20) an.
-- Spezialsticker: gib den Code an (z.B. "FWC5","00").
+  const prompt = `Auf den Fotos liegen lose Panini-Sticker der FIFA WM 2026 mit der RÜCKSEITE nach oben (typischerweise in einem 3x3-Raster, also bis zu 9 Stück pro Foto).
+Auf der Rückseite ist der Sticker-Code aufgedruckt – meist ein Länderkürzel + Nummer wie "CZE 7", "GER 13" oder ein Spezialcode wie "FWC 5" bzw. "00".
+Lies für JEDEN klar lesbaren Sticker den aufgedruckten Code exakt aus.
 
 Gib ausschließlich JSON in genau diesem Format zurück:
 {"stickers":[
-  {"country":"<englischer Ländername oder null>","number":<Zahl oder null>,"code":"<Spezialcode oder null>"}
+  {"code":"<aufgedruckter Code exakt, z.B. CZE7 / FWC5 / 00, oder null>","country":"<englischer Ländername, falls statt Code erkennbar, sonst null>","number":<Zahl 1-20, falls statt Code erkennbar, sonst null>}
 ]}
-Wenn eine Nummer mehrfach vorkommt, liste sie mehrfach. Rate nicht bei unleserlichen Stickern.`;
+Bevorzuge immer das Feld "code" mit dem exakt abgelesenen Kürzel+Nummer. Wenn eine Nummer mehrfach vorkommt, liste sie mehrfach. Rate nicht bei unleserlichen Stickern.`;
 
   const json = await runVision(prompt, images, SPARES_SCHEMA);
   const stickers: any[] = Array.isArray(json?.stickers) ? json.stickers : [];

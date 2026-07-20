@@ -88,10 +88,29 @@ export default function SparesPage() {
       <div className="center">
         <h2 style={{ margin: 0 }}>Doppelte Sticker</h2>
         <p className="muted" style={{ margin: 0 }}>
-          Lege deine Doppelten gut sichtbar aus (Nummer nach oben) und
-          fotografiere sie – gern mehrere Fotos.
+          So werden die Nummern am besten erkannt:
         </p>
       </div>
+
+      {(phase === "camera" || phase === "idle") && (
+        <div className="card">
+          <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+            <li>
+              Sticker mit der <b>Rückseite nach oben</b> hinlegen (die Seite mit
+              der Nummer).
+            </li>
+            <li>
+              <b>Maximal 9 Stück</b> eng in ein <b>3×3-Raster</b> legen (hochkant
+              oder quer – egal).
+            </li>
+            <li>Formatfüllend fotografieren – nutze das eingeblendete Raster.</li>
+          </ol>
+          <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>
+            Mehr als 9 pro Foto? Dann wird die Auflösung je Sticker zu klein zum
+            Lesen. Lieber mehrere Fotos machen.
+          </p>
+        </div>
+      )}
 
       {error && <div className="toast err">{error}</div>}
       {note && phase === "idle" && <div className="toast warn">{note}</div>}
@@ -99,7 +118,8 @@ export default function SparesPage() {
       {(phase === "camera" || phase === "idle") && (
         <CameraCapture
           onCapture={handleCapture}
-          shutterLabel={shots ? "Weiteres Foto" : "Doppelte fotografieren"}
+          gridOverlay
+          shutterLabel={shots ? "Weiteres Foto (max. 9)" : "Doppelte fotografieren"}
         />
       )}
 

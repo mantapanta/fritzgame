@@ -197,6 +197,45 @@ a {
   display: block;
 }
 
+.grid3x3 {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.grid3x3 span {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.grid3x3 span:nth-child(1) {
+  top: 0;
+  bottom: 0;
+  left: 33.333%;
+  width: 1px;
+}
+
+.grid3x3 span:nth-child(2) {
+  top: 0;
+  bottom: 0;
+  left: 66.666%;
+  width: 1px;
+}
+
+.grid3x3 span:nth-child(3) {
+  left: 0;
+  right: 0;
+  top: 33.333%;
+  height: 1px;
+}
+
+.grid3x3 span:nth-child(4) {
+  left: 0;
+  right: 0;
+  top: 66.666%;
+  height: 1px;
+}
+
 .camera-overlay {
   position: absolute;
   inset: 0;

@@ -15,9 +15,11 @@ type Props = {
   /** Buttonbeschriftung des Auslösers. */
   shutterLabel?: string;
   disabled?: boolean;
+  /** Blendet ein 3x3-Hilfsraster über die Live-Kamera ein (zum Auslegen von Karten). */
+  gridOverlay?: boolean;
 };
 
-const MAX_DIM = 1280;
+const MAX_DIM = 1600;
 
 function assessQuality(ctx: CanvasRenderingContext2D, w: number, h: number): Quality {
   const { data } = ctx.getImageData(0, 0, w, h);
@@ -60,6 +62,7 @@ export default function CameraCapture({
   onCapture,
   shutterLabel = "Foto aufnehmen",
   disabled,
+  gridOverlay,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -178,6 +181,11 @@ export default function CameraCapture({
     <div className="stack">
       <div className="camera-frame">
         <video ref={videoRef} playsInline muted />
+        {gridOverlay && (
+          <div className="grid3x3" aria-hidden>
+            <span /><span /><span /><span />
+          </div>
+        )}
       </div>
       <button
         className="btn btn-primary"
