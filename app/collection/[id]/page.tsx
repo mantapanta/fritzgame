@@ -85,7 +85,7 @@ export default function CollectionPage() {
   return (
     <div className="stack">
       <header className="topbar">
-        <Link href="/" className="back-link">
+        <Link href="/swap" className="back-link">
           ← Start
         </Link>
         <span className="pill">{isMine ? "Meine Sammlung" : "Sammlung"}</span>

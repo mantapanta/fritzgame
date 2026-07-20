@@ -129,7 +129,7 @@ export default function CapturePage() {
     return (
       <div className="stack">
         <header className="topbar">
-          <Link href="/" className="back-link">← Start</Link>
+          <Link href="/swap" className="back-link">← Start</Link>
           <span className="pill">Sticker erfassen</span>
         </header>
         <div className="toast warn">Bitte melde dich zuerst an.</div>
@@ -166,7 +166,7 @@ export default function CapturePage() {
   return (
     <div className="stack">
       <header className="topbar">
-        <Link href="/" className="back-link">← Abbrechen</Link>
+        <Link href="/swap" className="back-link">← Abbrechen</Link>
         <span className="pill">Sticker erfassen</span>
       </header>
 

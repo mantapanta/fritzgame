@@ -85,7 +85,7 @@ function TradeInner() {
     return (
       <div className="stack">
         <header className="topbar">
-          <Link href="/" className="back-link">← Start</Link>
+          <Link href="/swap" className="back-link">← Start</Link>
           <span className="pill">Tauschen</span>
         </header>
         <div className="toast warn">Bitte melde dich zuerst an.</div>
@@ -100,7 +100,7 @@ function TradeInner() {
     return (
       <div className="stack">
         <header className="topbar">
-          <Link href="/" className="back-link">← Start</Link>
+          <Link href="/swap" className="back-link">← Start</Link>
           <span className="pill">Tauschen</span>
         </header>
         <div className="toast warn">

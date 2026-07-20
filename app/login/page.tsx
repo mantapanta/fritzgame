@@ -39,7 +39,7 @@ function LoginInner() {
   return (
     <div className="stack">
       <header className="topbar">
-        <Link href="/" className="back-link">← Start</Link>
+        <Link href="/swap" className="back-link">← Start</Link>
         <span className="pill">Anmelden</span>
       </header>
 

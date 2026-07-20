@@ -433,6 +433,51 @@ a {
   }
 }
 
+.hub-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  text-decoration: none;
+  color: var(--text);
+  background: var(--bg-elev);
+  transition: transform 0.05s ease;
+}
+
+.hub-tile:active {
+  transform: scale(0.99);
+}
+
+.hub-game {
+  background: linear-gradient(160deg, #0e2a17, #0a1f13);
+}
+
+.hub-swap {
+  background: linear-gradient(160deg, #16233d, #121a2e);
+}
+
+.hub-emoji {
+  font-size: 40px;
+  flex: 0 0 auto;
+}
+
+.hub-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hub-text b {
+  font-size: 20px;
+}
+
+.hub-text span {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
 .code-input {
   text-align: center;
   font-family: ui-monospace, "SF Mono", Menlo, monospace;

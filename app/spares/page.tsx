@@ -79,8 +79,8 @@ export default function SparesPage() {
   return (
     <div className="stack">
       <header className="topbar">
-        <Link href="/capture" className="back-link">
-          ← Album
+        <Link href="/swap" className="back-link">
+          ← FritzSwap
         </Link>
         <span className="pill">Doppelte erfassen</span>
       </header>
