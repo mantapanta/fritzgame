@@ -37,12 +37,13 @@
             display: flex; gap: 8px; z-index: 10; pointer-events: none;
             width: 94%; justify-content: space-between;
         }
+        #ui-layer { gap: 6px; }
         .hud-box {
             background: rgba(0,0,0,0.55);
-            padding: 7px 14px; border-radius: 8px;
+            padding: 6px 10px; border-radius: 8px;
             border: 1px solid rgba(255,255,255,0.12);
             backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-            font-weight: bold; font-size: 15px; letter-spacing: 1px; white-space: nowrap;
+            font-weight: bold; font-size: 13px; letter-spacing: 0.5px; white-space: nowrap;
         }
         #score { color: #38e06a; }
         #best  { color: #ffcc00; }
@@ -60,12 +61,6 @@
             font-size: 12px; color: rgba(255,255,255,0.55);
             z-index: 5; pointer-events: none; text-align: center; width: 90%;
             transition: opacity 0.5s ease;
-        }
-        #match {
-            position: absolute; top: 58px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 20px; padding: 4px 14px; font-size: 15px; font-weight: bold;
-            z-index: 9; pointer-events: none; white-space: nowrap;
         }
         #reopen {
             position: absolute; left: 10px; bottom: 62px; z-index: 11;
@@ -105,11 +100,10 @@
     <div id="wrap">
         <canvas id="gameCanvas" width="600" height="800"></canvas>
         <div id="ui-layer">
-            <div class="hud-box">TORE <span id="score">0</span></div>
+            <div class="hud-box"><span id="flagYou">🇦🇷</span> TORE <span id="score">0</span></div>
             <div class="hud-box">BEST <span id="best">0</span></div>
-            <div class="hud-box">SCHÜSSE <span id="attempts">0</span></div>
+            <div class="hud-box">SCHÜSSE <span id="attempts">0</span> <span id="flagOpp">🇪🇸</span></div>
         </div>
-        <div id="match">🇦🇷 ARG  vs  ESP 🇪🇸</div>
         <div id="popups">TOR!</div>
         <div id="hint">Linke Hälfte: Joystick zum Laufen & Dribbeln · Rechts: SCHUSS / SPRINT</div>
         <button id="reopen" type="button">⇄ Teams</button>
@@ -658,7 +652,8 @@
         // ===== Team-Auswahl (DOM-Overlay) =====
         (function teamUI() {
             const gy = document.getElementById('grid-you'), go = document.getElementById('grid-opp');
-            const overlay = document.getElementById('teamSelect'), matchEl = document.getElementById('match');
+            const overlay = document.getElementById('teamSelect');
+            const flagYou = document.getElementById('flagYou'), flagOpp = document.getElementById('flagOpp');
             let selYou = 'ARG', selOpp = 'ESP';
             try { selYou = localStorage.getItem('ss_you') || 'ARG'; selOpp = localStorage.getItem('ss_opp') || 'ESP'; } catch (e) {}
             if (!TEAMS[selYou]) selYou = 'ARG';
@@ -676,7 +671,8 @@
                         grid.appendChild(b);
                     });
                 });
-                matchEl.textContent = TEAMS[selYou].flag + ' ' + selYou + '  vs  ' + selOpp + ' ' + TEAMS[selOpp].flag;
+                flagYou.textContent = TEAMS[selYou].flag;
+                flagOpp.textContent = TEAMS[selOpp].flag;
             }
             function apply() { kitYou = TEAMS[selYou].kit; kitOpp = TEAMS[selOpp].kit; }
             apply(); render();
