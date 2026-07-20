@@ -6,10 +6,21 @@ import {
   teamByName,
 } from "./album";
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+export const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+
+/**
+ * Liest den API-Key und entfernt häufige Copy-&-Paste-Fehler: umschließende
+ * Anführungszeichen sowie Leerzeichen/Zeilenumbrüche.
+ */
+export function getGeminiKey(): string {
+  return (process.env.GEMINI_API_KEY || "")
+    .trim()
+    .replace(/^['"]+|['"]+$/g, "")
+    .trim();
+}
 
 function client(): GoogleGenerativeAI {
-  const key = process.env.GEMINI_API_KEY;
+  const key = getGeminiKey();
   if (!key) {
     throw new Error(
       "GEMINI_API_KEY ist nicht gesetzt. Bitte in den Umgebungsvariablen hinterlegen (siehe .env.example)."
