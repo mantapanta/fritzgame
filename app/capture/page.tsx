@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import CameraCapture, { type Quality } from "@/components/CameraCapture";
+import FactLoader from "@/components/FactLoader";
 import { ALBUM, TEAMS, codeSort } from "@/lib/album";
 import { setCaptureMissing } from "@/lib/client";
 
@@ -28,6 +29,7 @@ export default function CapturePage() {
   const router = useRouter();
   const { status: authStatus } = useSession();
   const [shots, setShots] = useState<Shot[]>([]);
+  const [finishing, setFinishing] = useState(false);
   const nextId = useRef(1);
 
   const analyze = useCallback(async (id: number, dataUrl: string) => {
@@ -99,9 +101,21 @@ export default function CapturePage() {
   const seenTeams = Array.from(new Set(okShots.flatMap((s) => s.teams)));
 
   function finish() {
+    if (pending > 0) {
+      setFinishing(true); // auf ausstehende Prüfungen warten (mit Fakten-Loader)
+      return;
+    }
     setCaptureMissing(allMissing);
     router.push("/spares");
   }
+
+  // Sobald alle Prüfungen durch sind, automatisch weiter.
+  useEffect(() => {
+    if (finishing && pending === 0) {
+      setCaptureMissing(allMissing);
+      router.push("/spares");
+    }
+  }, [finishing, pending, allMissing, router]);
 
   // ---- Login-Gate ----
   if (authStatus === "loading") {
@@ -122,6 +136,23 @@ export default function CapturePage() {
         <Link href="/login?callbackUrl=/capture" className="btn btn-primary">
           Anmelden
         </Link>
+      </div>
+    );
+  }
+
+  if (finishing) {
+    const analyzed = shots.length - pending;
+    return (
+      <div className="stack">
+        <header className="topbar">
+          <span className="back-link">&nbsp;</span>
+          <span className="pill">Auswertung</span>
+        </header>
+        <FactLoader
+          progress={shots.length ? analyzed / shots.length : 1}
+          title="Fotos werden ausgewertet …"
+          subtitle={`${analyzed} von ${shots.length} fertig`}
+        />
       </div>
     );
   }

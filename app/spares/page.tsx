@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CameraCapture, { type Quality } from "@/components/CameraCapture";
+import FactLoader from "@/components/FactLoader";
 import { codeSort } from "@/lib/album";
 import { clearCaptureMissing, getCaptureMissing } from "@/lib/client";
 
@@ -103,17 +104,11 @@ export default function SparesPage() {
       )}
 
       {phase === "recognizing" && (
-        <div className="card center stack" style={{ alignItems: "center" }}>
-          <div className="spinner" />
-          <div className="muted">Nummern werden gelesen …</div>
-        </div>
+        <FactLoader title="Nummern werden gelesen …" />
       )}
 
       {phase === "saving" && (
-        <div className="card center stack" style={{ alignItems: "center" }}>
-          <div className="spinner" />
-          <div className="muted">Sammlung wird gespeichert …</div>
-        </div>
+        <FactLoader title="Sammlung wird gespeichert …" />
       )}
 
       <div className="card stack">
