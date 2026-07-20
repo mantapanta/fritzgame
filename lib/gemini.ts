@@ -57,6 +57,36 @@ function extractJson(text: string): any {
   }
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Wiederholt transiente Fehler (Überlastung/Rate-Limit) mit exponentiellem Backoff. */
+async function generateWithRetry(
+  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
+  parts: any[],
+  attempts = 3
+): Promise<any> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await model.generateContent(parts);
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || "");
+      const transient =
+        /\b(429|500|502|503|504)\b/.test(msg) ||
+        /overload|unavailable|high demand|try again|temporarily/i.test(msg);
+      if (i === attempts - 1 && transient) {
+        throw new Error(
+          "Gemini ist gerade überlastet. Bitte in ein paar Sekunden erneut versuchen."
+        );
+      }
+      if (!transient) throw e;
+      await sleep(800 * Math.pow(2, i)); // 0.8s, 1.6s, ...
+    }
+  }
+  throw lastErr;
+}
+
 async function runVision(prompt: string, images: string[]): Promise<any> {
   const model = client().getGenerativeModel({
     model: MODEL,
@@ -69,7 +99,7 @@ async function runVision(prompt: string, images: string[]): Promise<any> {
     parts.push({ inlineData: { data, mimeType } });
   }
 
-  const result = await model.generateContent(parts);
+  const result = await generateWithRetry(model, parts);
   return extractJson(result.response.text());
 }
 
