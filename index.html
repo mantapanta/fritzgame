@@ -1108,16 +1108,35 @@
 
         // ---- PeerJS-Transport (WebRTC, P2P) ----
         function genCode() { const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 4; i++) s += a[Math.floor(Math.random() * a.length)]; return s; }
+        let connTimer = null;
+        function clearConnTimer() { if (connTimer) { clearTimeout(connTimer); connTimer = null; } }
         function peerConfig() {
             return { config: { iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:global.stun.twilio.com:3478' },
                 { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+                { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
             ] } };
         }
         function setStatus(t) { const e = el('mp-status'); if (e) e.textContent = t; }
+        function watchIce() {
+            if (!conn) return;
+            conn.on('error', function (e) { setStatus('Verbindungsfehler: ' + (e && e.type ? e.type : '?')); });
+            const pc = conn.peerConnection;
+            if (pc) pc.oniceconnectionstatechange = function () {
+                const s = pc.iceConnectionState;
+                if (s === 'checking') setStatus('Verbinde… (ICE-Check)');
+                else if (s === 'failed') setStatus('❌ P2P fehlgeschlagen (NAT/Firewall). Beide im selben WLAN probieren.');
+                else if (s === 'disconnected') setStatus('Verbindung unterbrochen…');
+            };
+        }
         function wireConn(isHost, myTeam) {
+            watchIce();
             conn.on('open', function () {
+                clearConnTimer();
                 const t = { send: function (o) { try { conn.send(JSON.stringify(o)); } catch (e) {} } };
                 setStatus('Verbunden!');
                 conn.on('data', function (d) { try { handleMsg(typeof d === 'string' ? JSON.parse(d) : d); } catch (e) {} });
@@ -1125,22 +1144,32 @@
                 beginOnline(isHost, myTeam, t);
             });
         }
+        function armTimeout() {
+            clearConnTimer();
+            connTimer = setTimeout(function () {
+                if (!online.active) setStatus('⏳ Keine direkte Verbindung (NAT/Firewall). Tipp: beide ins selbe WLAN.');
+            }, 20000);
+        }
         function hostRoom(myTeam) {
-            if (typeof Peer === 'undefined') { setStatus('Netzwerk nicht verfügbar (offline?).'); return; }
+            if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
             const code = genCode();
             setStatus('Raum wird erstellt…');
             peer = new Peer('sskick-' + code, peerConfig());
             peer.on('open', function () { const b = el('mp-codebox'); b.style.display = 'block'; b.textContent = code; setStatus('Warte auf Gegner – Code teilen!'); });
-            peer.on('connection', function (c) { conn = c; wireConn(true, myTeam); });
+            peer.on('connection', function (c) { conn = c; setStatus('Gegner verbindet… (ICE)'); wireConn(true, myTeam); armTimeout(); });
+            peer.on('disconnected', function () { setStatus('Broker getrennt – neu laden.'); });
             peer.on('error', function (e) { setStatus('Fehler: ' + (e && e.type ? e.type : '?')); });
         }
         function joinRoom(code, myTeam) {
-            if (typeof Peer === 'undefined') { setStatus('Netzwerk nicht verfügbar (offline?).'); return; }
+            if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
             if (!code || code.length < 4) { setStatus('Bitte 4-stelligen Code eingeben.'); return; }
             setStatus('Verbinde…');
             peer = new Peer(null, peerConfig());
-            peer.on('open', function () { conn = peer.connect('sskick-' + code.toUpperCase(), { reliable: true }); wireConn(false, myTeam); });
-            peer.on('error', function (e) { setStatus('Fehler: ' + (e && e.type ? e.type : '?') + ' – Code korrekt?'); });
+            peer.on('open', function () { conn = peer.connect('sskick-' + code.toUpperCase(), { reliable: true }); wireConn(false, myTeam); armTimeout(); });
+            peer.on('error', function (e) {
+                const ty = e && e.type ? e.type : '?';
+                setStatus(ty === 'peer-unavailable' ? 'Raum nicht gefunden – Code prüfen.' : 'Fehler: ' + ty);
+            });
         }
 
         // ---- Lobby-UI ----
