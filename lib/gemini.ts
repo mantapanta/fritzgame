@@ -1,5 +1,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { isValidNumber, numberByPos, type Page } from "./album";
+import {
+  STICKERS_PER_TEAM,
+  isValidCode,
+  normalizeCode,
+  teamByName,
+} from "./album";
 
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
@@ -19,18 +24,17 @@ export function parseImage(input: string): { data: string; mimeType: string } {
   if (match) {
     return { mimeType: match[1], data: match[2] };
   }
-  // Roher Base64 ohne Prefix -> als JPEG annehmen.
   return { mimeType: "image/jpeg", data: input.trim() };
 }
 
-/** Extrahiert das erste JSON-Objekt aus einer Modellantwort (robust gegen Codeblöcke). */
+/** Extrahiert das erste JSON aus einer Modellantwort (robust gegen Codeblöcke). */
 function extractJson(text: string): any {
   const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
+    const start = cleaned.search(/[[{]/);
+    const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
     if (start !== -1 && end !== -1 && end > start) {
       return JSON.parse(cleaned.slice(start, end + 1));
     }
@@ -54,75 +58,147 @@ async function runVision(prompt: string, images: string[]): Promise<any> {
   return extractJson(result.response.text());
 }
 
-export type PageRecognition = {
-  /** Fehlende Sticker-Nummern auf dieser Seite. */
-  missing: number[];
-  /** Wie viele Slots als leer erkannt wurden. */
-  emptyCount: number;
+function dedupeSorted(codes: string[]): string[] {
+  return Array.from(new Set(codes));
+}
+
+export type AlbumRecognition = {
+  /** Fehlende Sticker-Codes (leere Plätze auf den Fotos). */
+  missing: string[];
+  /** Auf den Fotos erkannte Team-Codes (für Fortschritt „Teams gescannt"). */
+  seenTeams: string[];
+  /** Hinweise/Warnungen (z.B. Land nicht sicher erkannt). */
+  notes: string[];
 };
 
 /**
- * Album-Seite: Präsenz-Erkennung gegen das bekannte Layout.
- * Das Modell muss nicht die (verdeckten) Nummern lesen, sondern nur pro
- * Rasterposition entscheiden, ob ein Sticker klebt oder der Platz leer ist.
+ * Album-Foto(s): Erkennt je Seite das gezeigte Land bzw. den Spezialabschnitt und
+ * die Nummern der LEEREN Klebeplätze. Baut daraus die fehlenden Sticker-Codes.
+ *
+ * Im echten Album steht in Teamseiten meist nur die Nummer (1–20) im leeren Feld,
+ * das Land nur in der Überschrift — daher lesen wir Land + leere Nummern getrennt.
  */
-export async function recognizePage(
-  page: Page,
+export async function recognizeAlbumPhoto(
   images: string[]
-): Promise<PageRecognition> {
-  const prompt = `Du analysierst das Foto einer Sammelalbum-Seite ("${page.label}", Seite ${page.pageNo}).
-Auf dieser Seite gibt es ${page.slots.length} Klebeplätze, angeordnet als Raster mit ${page.gridCols} Spalten und ${page.gridRows} Zeilen.
-Die Plätze werden zeilenweise von oben-links nach unten-rechts durchnummeriert, beginnend bei 0 (also 0 = oben links, 1 = rechts daneben, usw.).
-Ein Platz ist BELEGT, wenn dort ein Sticker/Bild klebt. Ein Platz ist LEER, wenn man den bedruckten Platzhalter/Umriss (meist mit Nummer) ohne Sticker sieht.
-Gib ausschließlich JSON in genau diesem Format zurück:
-{"emptyPositions":[<0-basierte Positionen aller LEEREN Plätze>]}
-Wenn alle Plätze belegt sind, gib {"emptyPositions":[]} zurück.`;
+): Promise<AlbumRecognition> {
+  const prompt = `Du analysierst Fotos aus einem Panini-Sammelalbum zur FIFA Fußball-WM 2026.
+Jede Seite gehört entweder zu EINER Nationalmannschaft (Teamseite) oder ist eine SPEZIALSEITE (Panini-Logo, Turnier-Embleme, Maskottchen, Pokal, FIFA-Museum).
+Ein Klebeplatz ist BELEGT, wenn dort ein Sticker klebt. Er ist LEER, wenn nur der bedruckte Platzhalter mit Nummer/Code sichtbar ist (kein Sticker).
+
+Aufgabe für JEDES Foto:
+1. Erkenne, zu welchem Land die Seite gehört (englischer Ländername), oder ob es eine Spezialseite ist.
+2. Lies die NUMMERN aller LEEREN Klebeplätze.
+   - Auf Teamseiten sind die Plätze 1 bis 20 nummeriert -> gib die leeren Nummern als Zahlen an.
+   - Auf Spezialseiten tragen die Plätze Codes wie "00" oder "FWC5" -> gib diese als Strings an.
+
+Gib ausschließlich JSON in genau diesem Format zurück (ein Eintrag pro Foto):
+{"pages":[
+  {"country":"<englischer Ländername oder null>","special":<true|false>,"emptyNumbers":[<leere Zahlen auf Teamseiten>],"emptyCodes":[<leere Codes auf Spezialseiten, z.B. "FWC5","00">]}
+]}
+Wenn alle Plätze belegt sind, gib leere Listen zurück. Rate nicht bei unleserlichen Stellen.`;
 
   const json = await runVision(prompt, images);
-  const raw: unknown = json?.emptyPositions;
-  const positions: number[] = Array.isArray(raw)
-    ? raw.map((x) => Number(x)).filter((x) => Number.isInteger(x))
-    : [];
+  const pages: any[] = Array.isArray(json?.pages) ? json.pages : [];
 
-  const missing: number[] = [];
-  for (const pos of positions) {
-    const num = numberByPos(page.pageNo, pos);
-    if (num !== undefined) missing.push(num);
+  const missing: string[] = [];
+  const seenTeams: string[] = [];
+  const notes: string[] = [];
+
+  for (const page of pages) {
+    const isSpecial = page?.special === true;
+    const emptyNumbers: number[] = Array.isArray(page?.emptyNumbers)
+      ? page.emptyNumbers.map((x: unknown) => Number(x)).filter((x: number) => Number.isInteger(x))
+      : [];
+    const emptyCodes: string[] = Array.isArray(page?.emptyCodes)
+      ? page.emptyCodes.map((x: unknown) => String(x))
+      : [];
+
+    // Spezialseite: Codes direkt übernehmen.
+    for (const raw of emptyCodes) {
+      const c = normalizeCode(raw);
+      if (isValidCode(c)) missing.push(c);
+    }
+
+    // Teamseite: Land -> Code-Präfix, dann Nummern anhängen.
+    const country: string | null =
+      typeof page?.country === "string" ? page.country : null;
+    const team = country ? teamByName(country) : undefined;
+
+    if (!isSpecial && emptyNumbers.length > 0) {
+      if (!team) {
+        notes.push(
+          country
+            ? `Land „${country}" konnte keinem Team zugeordnet werden.`
+            : "Land einer Teamseite nicht erkannt."
+        );
+        continue;
+      }
+      for (const n of emptyNumbers) {
+        if (n >= 1 && n <= STICKERS_PER_TEAM) missing.push(`${team.code}${n}`);
+      }
+    }
+
+    if (team) seenTeams.push(team.code);
   }
-  missing.sort((a, b) => a - b);
 
-  return { missing: Array.from(new Set(missing)), emptyCount: positions.length };
+  return {
+    missing: dedupeSorted(missing),
+    seenTeams: dedupeSorted(seenTeams),
+    notes,
+  };
 }
 
 export type SparesRecognition = {
-  /** Erkannte doppelte Sticker-Nummern. */
-  doubles: number[];
-  /** Vom Modell gemeldete Roh-Anzahl gelesener Nummern (inkl. ungültiger). */
+  /** Erkannte doppelte Sticker-Codes. */
+  doubles: string[];
+  /** Roh-Anzahl gelesener Sticker (inkl. nicht zuordenbarer). */
   readCount: number;
+  notes: string[];
 };
 
 /**
- * Doppel-Stapel: Nummern-OCR der ausgelegten losen Sticker.
+ * Doppel-Stapel: liest lose Sticker aus. Jeder Sticker trägt vorne eine Nummer
+ * und gehört zu einem Land/Abschnitt (am Bild erkennbar).
  */
 export async function recognizeSpares(
   images: string[]
 ): Promise<SparesRecognition> {
-  const prompt = `Auf den Fotos liegen lose Sammelsticker ausgebreitet (Doppelte, die getauscht werden sollen).
-Auf jedem Sticker ist eine Nummer aufgedruckt (meist in einer Ecke).
-Lies die Nummern ALLER klar erkennbaren Sticker aus.
+  const prompt = `Auf den Fotos liegen lose Panini-Sticker der FIFA WM 2026 ausgebreitet (Doppelte zum Tauschen).
+Jeder Sticker trägt vorne eine Nummer; Team-Sticker gehören zu einem Land (Wappen/Trikot/Name erkennbar), Spezialsticker tragen Codes wie "00" oder "FWC5".
+Lies ALLE klar erkennbaren Sticker aus. Für jeden Sticker:
+- Team-Sticker: gib das Land (englischer Name) und die Nummer (1–20) an.
+- Spezialsticker: gib den Code an (z.B. "FWC5","00").
+
 Gib ausschließlich JSON in genau diesem Format zurück:
-{"numbers":[<alle erkannten Sticker-Nummern als Ganzzahlen>]}
-Wenn eine Nummer mehrfach vorkommt, liste sie mehrfach auf. Rate nicht bei unleserlichen Stickern.`;
+{"stickers":[
+  {"country":"<englischer Ländername oder null>","number":<Zahl oder null>,"code":"<Spezialcode oder null>"}
+]}
+Wenn eine Nummer mehrfach vorkommt, liste sie mehrfach. Rate nicht bei unleserlichen Stickern.`;
 
   const json = await runVision(prompt, images);
-  const raw: unknown = json?.numbers;
-  const nums: number[] = Array.isArray(raw)
-    ? raw.map((x) => Number(x)).filter((x) => Number.isInteger(x))
-    : [];
+  const stickers: any[] = Array.isArray(json?.stickers) ? json.stickers : [];
 
-  const doubles = nums.filter((n) => isValidNumber(n));
-  return {
-    doubles: Array.from(new Set(doubles)).sort((a, b) => a - b),
-    readCount: nums.length,
-  };
+  const doubles: string[] = [];
+  const notes: string[] = [];
+  let readCount = 0;
+
+  for (const s of stickers) {
+    readCount++;
+    const code = typeof s?.code === "string" ? normalizeCode(s.code) : "";
+    if (code && isValidCode(code)) {
+      doubles.push(code);
+      continue;
+    }
+    const country: string | null =
+      typeof s?.country === "string" ? s.country : null;
+    const number = Number(s?.number);
+    const team = country ? teamByName(country) : undefined;
+    if (team && Number.isInteger(number) && number >= 1 && number <= STICKERS_PER_TEAM) {
+      doubles.push(`${team.code}${number}`);
+    } else if (country && !team) {
+      notes.push(`Land „${country}" konnte keinem Team zugeordnet werden.`);
+    }
+  }
+
+  return { doubles: dedupeSorted(doubles), readCount, notes };
 }

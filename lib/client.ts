@@ -19,16 +19,16 @@ export function getMyId(): string | null {
   }
 }
 
-export function setCaptureMissing(numbers: number[]) {
+export function setCaptureMissing(codes: string[]) {
   try {
-    sessionStorage.setItem(MISSING_KEY, JSON.stringify(numbers));
+    sessionStorage.setItem(MISSING_KEY, JSON.stringify(codes));
   } catch {}
 }
 
-export function getCaptureMissing(): number[] {
+export function getCaptureMissing(): string[] {
   try {
     const raw = sessionStorage.getItem(MISSING_KEY);
-    return raw ? (JSON.parse(raw) as number[]) : [];
+    return raw ? (JSON.parse(raw) as string[]) : [];
   } catch {
     return [];
   }

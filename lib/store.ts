@@ -4,10 +4,10 @@ export type Collection = {
   id: string;
   createdAt: number;
   setId: string;
-  /** Fehlende Sticker-Nummern. */
-  missing: number[];
-  /** Doppelte (tauschbare) Sticker-Nummern. */
-  doubles: number[];
+  /** Fehlende Sticker-Codes (z.B. "CZE7"). */
+  missing: string[];
+  /** Doppelte (tauschbare) Sticker-Codes. */
+  doubles: string[];
   /** Optionaler Anzeigename des Sammlers. */
   owner?: string;
 };

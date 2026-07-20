@@ -6,8 +6,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { getMyId, parseCollectionId } from "@/lib/client";
 
 type MatchResult = {
-  iGive: number[];
-  iGet: number[];
+  iGive: string[];
+  iGet: string[];
   theirs: { id: string; owner?: string };
 };
 

@@ -2,38 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import CameraCapture, { type Quality } from "@/components/CameraCapture";
-import { ALBUM, TOTAL_PAGES } from "@/lib/album";
+import { ALBUM, codeSort } from "@/lib/album";
 import { setCaptureMissing } from "@/lib/client";
 
-type Phase = "camera" | "checking" | "recognizing" | "result";
-
-type PageResult = {
-  missing: number[];
-  emptyCount: number;
-  slotCount: number;
-};
+type Phase = "camera" | "recognizing" | "idle";
 
 export default function CapturePage() {
   const router = useRouter();
-  const [pageIdx, setPageIdx] = useState(0);
   const [phase, setPhase] = useState<Phase>("camera");
-  const [captured, setCaptured] = useState<{
-    dataUrl: string;
-    quality: Quality;
-  } | null>(null);
-  const [result, setResult] = useState<PageResult | null>(null);
+  const [missing, setMissing] = useState<string[]>([]);
+  const [seenTeams, setSeenTeams] = useState<string[]>([]);
+  const [shots, setShots] = useState(0);
+  const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  // Fehlende Sticker je Seite (überschreibbar bei Neuaufnahme).
-  const missingByPage = useRef<Map<number, number[]>>(new Map());
-
-  const page = ALBUM.pages[pageIdx];
-  const progress = useMemo(
-    () => Math.round((pageIdx / TOTAL_PAGES) * 100),
-    [pageIdx]
-  );
 
   async function recognize(dataUrl: string) {
     setPhase("recognizing");
@@ -42,58 +25,48 @@ export default function CapturePage() {
       const res = await fetch("/api/recognize/page", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageNo: page.pageNo, images: [dataUrl] }),
+        body: JSON.stringify({ images: [dataUrl] }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Erkennung fehlgeschlagen.");
-      setResult({
-        missing: data.missing || [],
-        emptyCount: data.emptyCount ?? 0,
-        slotCount: data.slotCount ?? page.slots.length,
-      });
-      setPhase("result");
+
+      const foundMissing: string[] = data.missing || [];
+      const foundTeams: string[] = data.seenTeams || [];
+      const notes: string[] = data.notes || [];
+
+      setMissing((prev) =>
+        Array.from(new Set([...prev, ...foundMissing])).sort(codeSort)
+      );
+      setSeenTeams((prev) => Array.from(new Set([...prev, ...foundTeams])));
+      setShots((s) => s + 1);
+
+      if (notes.length) {
+        setNote(notes[0]);
+      } else if (!foundTeams.length && !foundMissing.length) {
+        setNote("Auf diesem Foto nichts erkannt – näher ran oder mehr Licht.");
+      } else {
+        setNote(
+          `Erkannt: ${foundTeams.length} Team-Seite(n), ${foundMissing.length} fehlende gefunden.`
+        );
+      }
+      setPhase("idle");
     } catch (e: any) {
       setError(e?.message || "Erkennung fehlgeschlagen.");
-      setPhase("camera");
-      setCaptured(null);
+      setPhase("idle");
     }
   }
 
   function handleCapture(dataUrl: string, quality: Quality) {
-    setCaptured({ dataUrl, quality });
-    if (!quality.ok) {
-      setPhase("checking");
-    } else {
-      recognize(dataUrl);
-    }
-  }
-
-  function retake() {
-    setCaptured(null);
-    setResult(null);
-    setError(null);
-    setPhase("camera");
-  }
-
-  function acceptPage() {
-    if (result) missingByPage.current.set(page.pageNo, result.missing);
-    if (pageIdx + 1 < TOTAL_PAGES) {
-      setPageIdx((i) => i + 1);
-      retake();
-    } else {
-      finish();
-    }
+    if (!quality.ok) setNote(quality.reason || "Bildqualität könnte besser sein.");
+    recognize(dataUrl);
   }
 
   function finish() {
-    if (result) missingByPage.current.set(page.pageNo, result.missing);
-    const all = new Set<number>();
-    for (const nums of missingByPage.current.values()) {
-      nums.forEach((n) => all.add(n));
-    }
-    setCaptureMissing(Array.from(all).sort((a, b) => a - b));
+    setCaptureMissing(missing);
     router.push("/spares");
   }
+
+  const teamsProgress = Math.round((seenTeams.length / ALBUM.teamCount) * 100);
 
   return (
     <div className="stack">
@@ -101,102 +74,71 @@ export default function CapturePage() {
         <Link href="/" className="back-link">
           ← Abbrechen
         </Link>
-        <span className="pill">
-          Seite {pageIdx + 1} / {TOTAL_PAGES}
-        </span>
+        <span className="pill">Album scannen</span>
       </header>
 
-      <div className="progress">
-        <span style={{ width: `${progress}%` }} />
-      </div>
-
       <div className="center">
-        <h2 style={{ margin: "4px 0 0" }}>{page.label}</h2>
+        <h2 style={{ margin: 0 }}>Album Seite für Seite fotografieren</h2>
         <p className="muted" style={{ margin: 0 }}>
-          {page.slots.length} Klebeplätze · Nr. {page.slots[0].number}–
-          {page.slots[page.slots.length - 1].number}
+          Fotografiere jede Seite (Reihenfolge egal). Die App erkennt Land und
+          leere Plätze automatisch.
         </p>
       </div>
 
-      {error && <div className="toast err">{error}</div>}
-
-      {phase === "camera" && (
-        <>
-          <p className="muted center" style={{ margin: 0 }}>
-            Halte die ganze Seite formatfüllend und gerade ins Bild.
-          </p>
-          <CameraCapture onCapture={handleCapture} shutterLabel="Seite fotografieren" />
-        </>
-      )}
-
-      {phase === "checking" && captured && (
-        <div className="stack">
-          <div className="camera-frame">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={captured.dataUrl} alt="Aufnahme" />
-          </div>
-          <div className="toast warn">
-            {captured.quality.reason || "Bildqualität könnte besser sein."}
-          </div>
-          <div className="row">
-            <button className="btn" onClick={retake}>
-              Neu aufnehmen
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={() => recognize(captured.dataUrl)}
-            >
-              Trotzdem verwenden
-            </button>
-          </div>
+      <div className="progress">
+        <span style={{ width: `${teamsProgress}%` }} />
+      </div>
+      <div className="stats-row">
+        <div className="stat">
+          <b>{shots}</b>
+          <span>Fotos</span>
         </div>
-      )}
+        <div className="stat">
+          <b>
+            {seenTeams.length}/{ALBUM.teamCount}
+          </b>
+          <span>Teams gescannt</span>
+        </div>
+        <div className="stat">
+          <b style={{ color: "var(--need)" }}>{missing.length}</b>
+          <span>fehlend</span>
+        </div>
+      </div>
 
-      {phase === "recognizing" && (
+      {error && <div className="toast err">{error}</div>}
+      {note && phase !== "recognizing" && <div className="toast warn">{note}</div>}
+
+      {phase === "recognizing" ? (
         <div className="card center stack" style={{ alignItems: "center" }}>
           <div className="spinner" />
           <div className="muted">Seite wird ausgewertet …</div>
         </div>
+      ) : (
+        <CameraCapture
+          onCapture={handleCapture}
+          shutterLabel={shots ? "Nächste Seite" : "Seite fotografieren"}
+        />
       )}
 
-      {phase === "result" && result && (
-        <div className="stack">
-          {captured && (
-            <div className="camera-frame">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={captured.dataUrl} alt="Aufnahme" />
-            </div>
-          )}
-          <div className="card stack">
-            <div className="stats-row">
-              <div className="stat">
-                <b>{result.slotCount - result.missing.length}</b>
-                <span>vorhanden</span>
-              </div>
-              <div className="stat">
-                <b style={{ color: "var(--need)" }}>{result.missing.length}</b>
-                <span>fehlt</span>
-              </div>
-            </div>
-            {result.missing.length > 0 && (
-              <div className="grid-numbers">
-                {result.missing.map((n) => (
-                  <span key={n} className="chip get">
-                    {n}
-                  </span>
-                ))}
-              </div>
-            )}
+      {missing.length > 0 && (
+        <details className="card">
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+            Bisher fehlend ({missing.length})
+          </summary>
+          <div className="grid-numbers" style={{ marginTop: 12 }}>
+            {missing.map((c) => (
+              <span key={c} className="chip get">
+                {c}
+              </span>
+            ))}
           </div>
-          <div className="row">
-            <button className="btn" onClick={retake}>
-              Neu aufnehmen
-            </button>
-            <button className="btn btn-success" onClick={acceptPage}>
-              {pageIdx + 1 < TOTAL_PAGES ? "Passt, weiter →" : "Fertig, weiter"}
-            </button>
-          </div>
-        </div>
+        </details>
+      )}
+
+      {shots > 0 && phase !== "recognizing" && (
+        <button className="btn btn-success" onClick={finish}>
+          Fertig – weiter zu den Doppelten →
+        </button>
       )}
     </div>
   );

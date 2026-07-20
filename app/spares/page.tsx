@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CameraCapture, { type Quality } from "@/components/CameraCapture";
+import { codeSort } from "@/lib/album";
 import {
   clearCaptureMissing,
   getCaptureMissing,
@@ -15,7 +16,7 @@ type Phase = "camera" | "recognizing" | "idle" | "saving";
 export default function SparesPage() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("camera");
-  const [doubles, setDoubles] = useState<number[]>([]);
+  const [doubles, setDoubles] = useState<string[]>([]);
   const [shots, setShots] = useState(0);
   const [owner, setOwner] = useState("");
   const [note, setNote] = useState<string | null>(null);
@@ -32,9 +33,9 @@ export default function SparesPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Erkennung fehlgeschlagen.");
-      const found: number[] = data.doubles || [];
+      const found: string[] = data.doubles || [];
       setDoubles((prev) =>
-        Array.from(new Set([...prev, ...found])).sort((a, b) => a - b)
+        Array.from(new Set([...prev, ...found])).sort(codeSort)
       );
       setShots((s) => s + 1);
       setNote(

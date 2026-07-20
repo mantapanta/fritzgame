@@ -29,8 +29,7 @@ export default function Home() {
           <div>
             <div style={{ fontWeight: 800, fontSize: 18 }}>{ALBUM.name}</div>
             <div className="muted" style={{ fontSize: 14 }}>
-              {ALBUM.season} · {ALBUM.totalStickers} Sticker ·{" "}
-              {ALBUM.pages.length} Seiten
+              {ALBUM.totalStickers} Sticker · {ALBUM.teamCount} Teams
             </div>
           </div>
         </div>
