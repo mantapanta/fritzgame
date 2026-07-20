@@ -62,11 +62,10 @@ export default function Home() {
       ) : (
         <div className="stack">
           <Link href="/login" className="btn btn-primary">
-            Anmelden / Registrieren
+            Mit Code anmelden
           </Link>
           <p className="muted center" style={{ margin: 0, fontSize: 13 }}>
-            Mit Konto wird deine Sammlung gespeichert und ist mit anderen
-            vergleichbar.
+            Du brauchst deinen 6-stelligen Zugangscode (bekommst du von Fritz).
           </p>
         </div>
       )}
