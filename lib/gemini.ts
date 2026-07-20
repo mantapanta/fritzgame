@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import {
   STICKERS_PER_TEAM,
   isValidCode,
@@ -6,10 +6,11 @@ import {
   teamByName,
 } from "./album";
 
-// „gemini-flash-latest" zeigt stets auf das neueste stabile Flash-Modell
-// (aktuell Gemini 3.5 Flash) und wird bei neuen Releases automatisch mitgezogen.
-// Per GEMINI_MODEL überschreibbar (z.B. auf "gemini-3.5-flash" pinnen).
-export const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+// „gemini-flash-lite-latest" ist das schnellste/günstigste aktuelle Flash-Modell –
+// für OCR + Länder-Erkennung völlig ausreichend und deutlich flotter als das große
+// Flash. Alias wird bei neuen Releases automatisch mitgezogen. Per GEMINI_MODEL
+// überschreibbar (z.B. "gemini-flash-latest" oder "gemini-3.5-flash").
+export const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 
 /**
  * Liest den API-Key und entfernt häufige Copy-&-Paste-Fehler: umschließende
@@ -42,18 +43,31 @@ export function parseImage(input: string): { data: string; mimeType: string } {
   return { mimeType: "image/jpeg", data: input.trim() };
 }
 
-/** Extrahiert das erste JSON aus einer Modellantwort (robust gegen Codeblöcke). */
+/** Extrahiert JSON aus einer Modellantwort (robust gegen Codeblöcke/Trailing). */
 function extractJson(text: string): any {
   const cleaned = text.replace(/```json/gi, "").replace(/```/g, "").trim();
   try {
     return JSON.parse(cleaned);
   } catch {
+    // Auf den ersten JSON-Block eingrenzen …
     const start = cleaned.search(/[[{]/);
     const end = Math.max(cleaned.lastIndexOf("}"), cleaned.lastIndexOf("]"));
     if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1));
+      const slice = cleaned.slice(start, end + 1);
+      try {
+        return JSON.parse(slice);
+      } catch {
+        // … und einfache Reparaturen versuchen (Trailing-Kommas entfernen).
+        try {
+          return JSON.parse(slice.replace(/,\s*([}\]])/g, "$1"));
+        } catch {
+          /* unten freundlich abbrechen */
+        }
+      }
     }
-    throw new Error("Konnte keine gültige JSON-Antwort vom Modell lesen.");
+    throw new Error(
+      "Die Antwort der Bilderkennung war unvollständig. Bitte das Foto erneut aufnehmen."
+    );
   }
 }
 
@@ -87,10 +101,64 @@ async function generateWithRetry(
   throw lastErr;
 }
 
-async function runVision(prompt: string, images: string[]): Promise<any> {
+// Erzwungene JSON-Schemata – verhindern unsauberes/abgeschnittenes JSON.
+const ALBUM_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    pages: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          country: { type: SchemaType.STRING, nullable: true },
+          special: { type: SchemaType.BOOLEAN },
+          emptyNumbers: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.INTEGER },
+          },
+          emptyCodes: {
+            type: SchemaType.ARRAY,
+            items: { type: SchemaType.STRING },
+          },
+        },
+        required: ["special", "emptyNumbers", "emptyCodes"],
+      },
+    },
+  },
+  required: ["pages"],
+} as const;
+
+const SPARES_SCHEMA = {
+  type: SchemaType.OBJECT,
+  properties: {
+    stickers: {
+      type: SchemaType.ARRAY,
+      items: {
+        type: SchemaType.OBJECT,
+        properties: {
+          country: { type: SchemaType.STRING, nullable: true },
+          number: { type: SchemaType.INTEGER, nullable: true },
+          code: { type: SchemaType.STRING, nullable: true },
+        },
+      },
+    },
+  },
+  required: ["stickers"],
+} as const;
+
+async function runVision(
+  prompt: string,
+  images: string[],
+  responseSchema?: any
+): Promise<any> {
   const model = client().getGenerativeModel({
     model: MODEL,
-    generationConfig: { responseMimeType: "application/json", temperature: 0 },
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0,
+      maxOutputTokens: 2048,
+      ...(responseSchema ? { responseSchema } : {}),
+    },
   });
 
   const parts: any[] = [{ text: prompt }];
@@ -142,7 +210,7 @@ Gib ausschließlich JSON in genau diesem Format zurück (ein Eintrag pro Foto):
 ]}
 Wenn alle Plätze belegt sind, gib leere Listen zurück. Rate nicht bei unleserlichen Stellen.`;
 
-  const json = await runVision(prompt, images);
+  const json = await runVision(prompt, images, ALBUM_SCHEMA);
   const pages: any[] = Array.isArray(json?.pages) ? json.pages : [];
 
   const missing: string[] = [];
@@ -220,7 +288,7 @@ Gib ausschließlich JSON in genau diesem Format zurück:
 ]}
 Wenn eine Nummer mehrfach vorkommt, liste sie mehrfach. Rate nicht bei unleserlichen Stickern.`;
 
-  const json = await runVision(prompt, images);
+  const json = await runVision(prompt, images, SPARES_SCHEMA);
   const stickers: any[] = Array.isArray(json?.stickers) ? json.stickers : [];
 
   const doubles: string[] = [];

@@ -52,7 +52,7 @@ export default function Home() {
       <div className="card">
         <h3 style={{ marginTop: 0 }}>So funktioniert&apos;s</h3>
         <ol className="muted" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
-          <li>Album Seite für Seite abfotografieren – du wirst durchgeführt.</li>
+          <li>Nur die Seiten fotografieren, auf denen dir Sticker fehlen.</li>
           <li>Doppelte Sticker ausgelegt abfotografieren.</li>
           <li>Du bekommst einen Link – teile ihn per WhatsApp.</li>
           <li>
