@@ -89,10 +89,49 @@ export async function GET() {
     ].filter((n) => Boolean(process.env[n])),
   };
 
+  // --- Auth / Login (Resend Magic-Link) ---
+  const resendKey = (process.env.AUTH_RESEND_KEY || "").trim();
+  const authConfig = {
+    authSecretPresent: Boolean(process.env.AUTH_SECRET),
+    authSecretLength: (process.env.AUTH_SECRET || "").length,
+    resendKeyPresent: resendKey.length > 0,
+    resendKeyPrefixOk: resendKey.startsWith("re_"),
+    emailFrom: process.env.AUTH_EMAIL_FROM || "(default) onboarding@resend.dev",
+    authUrl: process.env.AUTH_URL || process.env.NEXTAUTH_URL || null,
+  };
+
+  let resendLiveCheck: {
+    ok: boolean;
+    status: number | null;
+    message: string | null;
+  } = { ok: false, status: null, message: null };
+  if (resendKey) {
+    try {
+      const res = await fetch("https://api.resend.com/domains", {
+        headers: { Authorization: `Bearer ${resendKey}` },
+        cache: "no-store",
+      });
+      let message: string | null = null;
+      if (!res.ok) {
+        try {
+          const body: any = await res.json();
+          message = body?.message ?? body?.error?.message ?? null;
+        } catch {
+          /* ignore */
+        }
+      }
+      resendLiveCheck = { ok: res.ok, status: res.status, message };
+    } catch (e: any) {
+      resendLiveCheck = { ok: false, status: null, message: e?.message ?? "FETCH_ERROR" };
+    }
+  }
+
   return NextResponse.json({
     gemini,
     geminiLiveCheck: live,
     availableFlashModels,
     storage,
+    auth: authConfig,
+    resendLiveCheck,
   });
 }
