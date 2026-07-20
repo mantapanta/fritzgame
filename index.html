@@ -175,7 +175,7 @@
         let player, ball, keeper, facing;
         function reset() {
             player = { x: 300, y: 720, run: 0, vx: 0, vy: 0 };
-            ball = { x: 320, y: 700, vx: 0, vy: 0, spin: 0, spinDraw: 0 };
+            ball = { x: 320, y: 700, vx: 0, vy: 0, spin: 0, spinDraw: 0, trail: [] };
             keeper = { x: GOAL_CX, dive: GOAL_CX, diving: false, react: 0, lean: 0 };
             facing = { x: 0, y: -1 };
             phase = 'play';
@@ -301,22 +301,22 @@
             hint.style.opacity = '0';
 
             const iv = inputVector();
-            const aimX = Math.max(GOAL_L + 6, Math.min(GOAL_R - 6, GOAL_CX + iv.x * 74));
+            const aimX = GOAL_CX + iv.x * 10;         // fast mittig – die Kurve macht die Platzierung
             let dx = aimX - ball.x, dy = 0 - ball.y;
             const d = Math.hypot(dx, dy) || 1;
-            const SPEED = 14;
+            const SPEED = 13;
             ball.vx = dx / d * SPEED;
             ball.vy = dy / d * SPEED;
-            ball.spin = iv.x * 0.08;
+            ball.spin = iv.x * 0.6;                    // Effet -> gekrümmte Flugbahn (Hauptwaffe)
+            ball.trail = [];
 
-            // Torwart liest den Schuss und legt sich auf eine Ecke fest
-            // (wie in echt). Trifft er die Ecke -> Parade; platzierst du in die
-            // andere Ecke -> Tor. Reaktionszeit + Tempolimit machen ihn zusätzlich
-            // aus spitzem Winkel schlagbar.
+            // Torwart liest die GERADE Flugbahn und legt sich sehr genau fest
+            // -> gerade/mittige Schüsse hält er fast immer. Nur mit Effet (Kurve)
+            // oder aus spitzem Winkel zieht der Ball an ihm vorbei.
             const tHit = (ball.y - KEEPER_LINE) / (-ball.vy);
             const predX = ball.x + ball.vx * tHit;
-            const err = (((attempts * 2654435761) >>> 12) % 100) - 50;   // ±50 Leseungenauigkeit
-            keeper.dive = Math.max(GOAL_L - 14, Math.min(GOAL_R + 14, predX + err));
+            const err = (((attempts * 2654435761) >>> 12) % 34) - 17;   // ±17 (stark)
+            keeper.dive = Math.max(GOAL_L - 10, Math.min(GOAL_R + 10, predX + err));
             keeper.diving = true;
             keeper.react = 6;   // Frames Reaktionszeit
             sfx.kick();
@@ -356,11 +356,13 @@
                 keeper.x += (target - keeper.x) * 0.07;
                 keeper.lean *= 0.85;
             } else if (phase === 'shot') {
-                // Ballflug: Kurve (Magnus), Luft-/Rollreibung
-                ball.vx += ball.spin * 0.14; ball.spin *= 0.98;
-                ball.vx *= 0.992; ball.vy *= 0.992;
+                // Ballflug: echter Effet (Magnus) -> Bananen-Flugbahn
+                ball.vx += ball.spin * 0.03; ball.spin *= 0.995;
+                ball.vy *= 0.997;
                 ball.x += ball.vx; ball.y += ball.vy;
-                ball.spinDraw += 0.42;
+                ball.spinDraw += 0.42 + Math.abs(ball.vx) * 0.03;
+                ball.trail.push({ x: ball.x, y: ball.y });
+                if (ball.trail.length > 16) ball.trail.shift();
 
                 // Torwart hechtet zur festgelegten Ecke – begrenzt durch sein Tempo
                 if (keeper.react > 0) { keeper.react--; }
@@ -620,7 +622,16 @@
                     run: player.run, moving: spd > 0.4, lean: 0, num: '10'
                 });
             };
-            const drawBall = () => { drawBallSprite(project(ball.x, ball.y), ball.spinDraw); };
+            const drawBall = () => {
+                if (phase === 'shot' && ball.trail) {
+                    for (let i = 0; i < ball.trail.length; i++) {
+                        const tp = project(ball.trail[i].x, ball.trail[i].y);
+                        ctx.fillStyle = 'rgba(255,255,255,' + (i / ball.trail.length * 0.22) + ')';
+                        ctx.beginPath(); ctx.arc(tp.sx, tp.sy - 4 * tp.sc, 5 * tp.sc * (i / ball.trail.length + 0.3), 0, 7); ctx.fill();
+                    }
+                }
+                drawBallSprite(project(ball.x, ball.y), ball.spinDraw);
+            };
             [{ y: KEEPER_LINE, f: drawKeeper }, { y: player.y, f: drawPlayer }, { y: ball.y, f: drawBall }]
                 .sort((a, b) => a.y - b.y).forEach(i => i.f());
 
