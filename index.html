@@ -61,6 +61,44 @@
             z-index: 5; pointer-events: none; text-align: center; width: 90%;
             transition: opacity 0.5s ease;
         }
+        #match {
+            position: absolute; top: 58px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 20px; padding: 4px 14px; font-size: 15px; font-weight: bold;
+            z-index: 9; pointer-events: none; white-space: nowrap;
+        }
+        #reopen {
+            position: absolute; left: 10px; bottom: 62px; z-index: 11;
+            background: rgba(0,0,0,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer;
+        }
+        #teamSelect {
+            position: absolute; inset: 0; z-index: 200; display: flex;
+            align-items: center; justify-content: center;
+            background: rgba(4,10,7,0.86); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+        }
+        .ts-card {
+            width: 92%; max-width: 520px; padding: 20px;
+            background: linear-gradient(160deg, #0e2a17, #0a1f13);
+            border: 1px solid rgba(255,255,255,0.12); border-radius: 18px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .ts-title { text-align: center; font-size: 24px; font-weight: 900; letter-spacing: 1px; margin-bottom: 8px; }
+        .ts-label { font-size: 12px; letter-spacing: 2px; color: #8fdcae; margin: 14px 0 8px; font-weight: bold; }
+        .ts-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+        .ts-chip {
+            display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 2px;
+            background: rgba(255,255,255,0.06); border: 2px solid transparent; border-radius: 10px;
+            cursor: pointer; color: #fff;
+        }
+        .ts-chip .fl { font-size: 24px; line-height: 1; }
+        .ts-chip .cd { font-size: 11px; font-weight: bold; color: #cfe; }
+        .ts-chip.sel { border-color: #38e06a; background: rgba(56,224,106,0.16); box-shadow: 0 0 12px rgba(56,224,106,0.3); }
+        .ts-play {
+            width: 100%; margin-top: 18px; padding: 15px; font-size: 18px; font-weight: 900; letter-spacing: 1px;
+            color: #06110b; background: linear-gradient(145deg, #38e06a, #16b34a);
+            border: none; border-radius: 12px; cursor: pointer; box-shadow: 0 6px 18px rgba(56,224,106,0.35);
+        }
     </style>
 </head>
 <body>
@@ -71,8 +109,20 @@
             <div class="hud-box">BEST <span id="best">0</span></div>
             <div class="hud-box">SCHÜSSE <span id="attempts">0</span></div>
         </div>
+        <div id="match">🇦🇷 ARG  vs  ESP 🇪🇸</div>
         <div id="popups">TOR!</div>
         <div id="hint">Linke Hälfte: Joystick zum Laufen & Dribbeln · Rechts: SCHUSS / SPRINT</div>
+        <button id="reopen" type="button">⇄ Teams</button>
+        <div id="teamSelect">
+            <div class="ts-card">
+                <div class="ts-title">⚽ LÄNDERSPIEL</div>
+                <div class="ts-label">DEIN TEAM</div>
+                <div class="ts-grid" id="grid-you"></div>
+                <div class="ts-label">GEGNER (Torwart)</div>
+                <div class="ts-grid" id="grid-opp"></div>
+                <button id="ts-play" class="ts-play" type="button">SPIELEN ⚽</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -137,6 +187,21 @@
             phase = 'play';
         }
         reset();
+
+        // ===== Nationalteams / Trikots (Kits) =====
+        const TEAMS = {
+            ARG: { flag: '🇦🇷', name: 'Argentinien', kit: { type: 'stripes', c1: '#6cb0e4', c2: '#ffffff', shorts: '#122647', socks: '#ffffff' } },
+            ESP: { flag: '🇪🇸', name: 'Spanien', kit: { type: 'solid', c1: '#c60b1e', c2: '#c60b1e', shorts: '#1b2a5b', socks: '#12204a' } },
+            GER: { flag: '🇩🇪', name: 'Deutschland', kit: { type: 'solid', c1: '#f4f4f4', c2: '#f4f4f4', shorts: '#141414', socks: '#f4f4f4' } },
+            BRA: { flag: '🇧🇷', name: 'Brasilien', kit: { type: 'solid', c1: '#ffdf00', c2: '#ffdf00', shorts: '#0b3aa0', socks: '#ffffff' } },
+            FRA: { flag: '🇫🇷', name: 'Frankreich', kit: { type: 'solid', c1: '#20408a', c2: '#20408a', shorts: '#ffffff', socks: '#c8102e' } },
+            ENG: { flag: '🇬🇧', name: 'England', kit: { type: 'solid', c1: '#f4f4f4', c2: '#f4f4f4', shorts: '#0a1f44', socks: '#f4f4f4' } },
+            ITA: { flag: '🇮🇹', name: 'Italien', kit: { type: 'solid', c1: '#1c50a1', c2: '#1c50a1', shorts: '#ffffff', socks: '#1c50a1' } },
+            NED: { flag: '🇳🇱', name: 'Niederlande', kit: { type: 'solid', c1: '#ff6a00', c2: '#ff6a00', shorts: '#141414', socks: '#ff6a00' } },
+            POR: { flag: '🇵🇹', name: 'Portugal', kit: { type: 'solid', c1: '#a50021', c2: '#a50021', shorts: '#1b6b25', socks: '#a50021' } }
+        };
+        let kitYou = TEAMS.ARG.kit, kitOpp = TEAMS.ESP.kit;
+        let paused = true;   // bis Team gewählt
 
         // ===== vorberechnete Ränge =====
         const crowd = [];
@@ -236,7 +301,7 @@
 
         function shoot() {
             initAudio();
-            if (phase !== 'play' || !hasBall()) return;
+            if (paused || phase !== 'play' || !hasBall()) return;
             phase = 'shot';
             attempts++; attemptsEl.textContent = attempts;
             hint.style.opacity = '0';
@@ -265,6 +330,7 @@
 
         // ===== Update =====
         function update() {
+            if (paused) return;
             const iv = inputVector();
 
             if (phase === 'play') {
@@ -360,27 +426,35 @@
             ctx.beginPath(); ctx.arc(0, 0, rx, 0, 7); ctx.fill(); ctx.restore();
         }
 
-        // Detaillierte, schattierte Spielfigur (Kopf, Arme, Beine, Laufanimation)
+        // Farbe abdunkeln (für Verläufe) + Helligkeit bestimmen
+        function shade(hex, f) {
+            const n = parseInt(hex.slice(1), 16);
+            let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+            r = Math.min(255, Math.round(r * f)); g = Math.min(255, Math.round(g * f)); b = Math.min(255, Math.round(b * f));
+            return 'rgb(' + r + ',' + g + ',' + b + ')';
+        }
+        function lum(hex) { const n = parseInt(hex.slice(1), 16); return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; }
+
+        // Detaillierte, schattierte Spielfigur mit Nationaltrikot (Kit)
         function drawPerson(sx, sy, s, o) {
+            const kit = o.kit;
             const lean = (o.lean || 0) * 9 * s;
             const run = o.run || 0, moving = o.moving;
             softShadow(sx + lean * 0.5, sy + 2 * s, 15 * s, 6 * s, 0.34);
 
-            // Beine mit Schrittanimation
+            // Beine mit Schrittanimation (Stutzen in Trikotfarbe)
             for (const sign of [-1, 1]) {
                 const sw = moving ? Math.sin(run + (sign > 0 ? 0 : Math.PI)) * 6 * s : 0;
                 const hipX = sx + sign * 4 * s + lean, hipY = sy - 13 * s;
                 const footX = sx + sign * 4.5 * s + sw + lean, footY = sy - Math.max(0, sw) * 0.15;
                 ctx.strokeStyle = o.skin; ctx.lineWidth = 5 * s; ctx.lineCap = 'round';
                 ctx.beginPath(); ctx.moveTo(hipX, hipY); ctx.lineTo(footX, footY); ctx.stroke();
-                // Stutzen
-                ctx.strokeStyle = o.socks; ctx.lineWidth = 5 * s;
+                ctx.strokeStyle = kit.socks; ctx.lineWidth = 5 * s;
                 ctx.beginPath(); ctx.moveTo(footX + (hipX - footX) * 0.35, footY + (hipY - footY) * 0.35); ctx.lineTo(footX, footY); ctx.stroke();
-                // Schuh
                 ctx.fillStyle = '#151515'; ctx.beginPath(); ctx.ellipse(footX + sign * 1.5 * s, footY, 4 * s, 2.4 * s, 0, 0, 7); ctx.fill();
             }
 
-            // Arme (gegengleich zu den Beinen)
+            // Arme
             const shY = sy - 30 * s;
             for (const sign of [-1, 1]) {
                 let ax = sx + sign * 11 * s + lean, ay = sy - 16 * s;
@@ -391,23 +465,36 @@
                 if (o.gloves) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ax, ay, 4.2 * s, 0, 7); ctx.fill(); }
             }
 
-            // Torso mit Trikot-Verlauf
+            // Torso – Trikot (Streifen oder unifarben)
             const tx = sx - 10 * s + lean, tw = 20 * s, ty = shY, th = 19 * s;
-            const g = ctx.createLinearGradient(tx, ty, tx, ty + th);
-            g.addColorStop(0, o.shirtA); g.addColorStop(1, o.shirtB);
-            ctx.fillStyle = g; rrPath(tx, ty, tw, th, 5 * s); ctx.fill();
-            // Seitenschattierung
-            ctx.fillStyle = 'rgba(0,0,0,0.12)'; rrPath(tx + tw * 0.62, ty, tw * 0.38, th, 5 * s); ctx.fill();
-            // Ärmel
-            ctx.fillStyle = o.shirtB;
+            if (kit.type === 'stripes') {
+                ctx.fillStyle = kit.c2; rrPath(tx, ty, tw, th, 5 * s); ctx.fill();
+                ctx.save(); rrPath(tx, ty, tw, th, 5 * s); ctx.clip();
+                ctx.fillStyle = kit.c1;
+                const sw2 = tw / 7;
+                for (let k = 1; k < 7; k += 2) ctx.fillRect(tx + k * sw2, ty, sw2, th);
+                ctx.restore();
+            } else {
+                const g = ctx.createLinearGradient(tx, ty, tx, ty + th);
+                g.addColorStop(0, kit.c1); g.addColorStop(1, shade(kit.c1, 0.78));
+                ctx.fillStyle = g; rrPath(tx, ty, tw, th, 5 * s); ctx.fill();
+            }
+            // Seitenschattierung + Ärmel
+            ctx.fillStyle = 'rgba(0,0,0,0.14)'; rrPath(tx + tw * 0.64, ty, tw * 0.36, th, 5 * s); ctx.fill();
+            ctx.fillStyle = shade(kit.c1, 0.9);
             rrPath(tx - 3 * s, ty + 1 * s, 5 * s, 8 * s, 2 * s); ctx.fill();
             rrPath(tx + tw - 2 * s, ty + 1 * s, 5 * s, 8 * s, 2 * s); ctx.fill();
             // Hose
-            ctx.fillStyle = o.shorts; rrPath(sx - 9 * s + lean, sy - 15 * s, 18 * s, 8 * s, 3 * s); ctx.fill();
-            // Rückennummer
-            if (o.num) { ctx.fillStyle = 'rgba(0,0,0,0.28)'; ctx.font = 'bold ' + (9 * s) + 'px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(o.num, sx + lean, ty + th * 0.5); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic'; }
+            ctx.fillStyle = kit.shorts; rrPath(sx - 9 * s + lean, sy - 15 * s, 18 * s, 8 * s, 3 * s); ctx.fill();
+            // Rückennummer (Kontrastfarbe)
+            if (o.num) {
+                const base = kit.type === 'stripes' ? kit.c2 : kit.c1;
+                ctx.fillStyle = lum(base) > 0.6 ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.85)';
+                ctx.font = 'bold ' + (9 * s) + 'px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(o.num, sx + lean, ty + th * 0.48); ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+            }
 
-            // Kopf mit Haaren + Schattierung
+            // Kopf mit Haaren
             const hx = sx + lean, hy = sy - 41 * s, hr = 6.5 * s;
             ctx.fillStyle = o.skin; ctx.beginPath(); ctx.arc(hx, hy, hr, 0, 7); ctx.fill();
             ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.arc(hx + 1.6 * s, hy + 0.6 * s, hr, Math.PI * -0.35, Math.PI * 0.55); ctx.fill();
@@ -524,21 +611,19 @@
             const drawKeeper = () => {
                 const p = project(keeper.x, KEEPER_LINE);
                 drawPerson(p.sx, p.sy, p.sc, {
-                    shirtA: '#ff6b6b', shirtB: '#c62828', shorts: '#141414', skin: '#e8b98f',
-                    hair: '#241611', socks: '#c62828', run: player.run * 0.25, moving: false,
+                    kit: kitOpp, skin: '#e8b98f', hair: '#241611',
+                    run: player.run * 0.25, moving: false,
                     lean: keeper.lean, gloves: true, phaseShot: phase === 'shot', num: '1'
                 });
             };
             const drawPlayer = () => {
                 const p = project(player.x, player.y), s = p.sc;
                 const spd = Math.hypot(player.vx, player.vy);
-                // Boden-Indikator (Besitz/Blickrichtung)
                 ctx.strokeStyle = 'rgba(56,224,106,0.8)'; ctx.lineWidth = 2 * s;
                 ctx.beginPath(); ctx.ellipse(p.sx, p.sy, 12 * s, 5 * s, 0, 0, 7); ctx.stroke();
                 drawPerson(p.sx, p.sy, s, {
-                    shirtA: '#ffffff', shirtB: '#cfd6df', shorts: '#0a2a6b', skin: '#e8b98f',
-                    hair: '#3a2a1a', socks: '#0a2a6b', run: player.run, moving: spd > 0.4,
-                    lean: 0, num: '9'
+                    kit: kitYou, skin: '#e8b98f', hair: '#3a2a1a',
+                    run: player.run, moving: spd > 0.4, lean: 0, num: '10'
                 });
             };
             const drawBall = () => { drawBallSprite(project(ball.x, ball.y), ball.spinDraw); };
@@ -569,6 +654,39 @@
             ctx.fillText('SPRINT', sprintBtn.x, sprintBtn.y);
             ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
         }
+
+        // ===== Team-Auswahl (DOM-Overlay) =====
+        (function teamUI() {
+            const gy = document.getElementById('grid-you'), go = document.getElementById('grid-opp');
+            const overlay = document.getElementById('teamSelect'), matchEl = document.getElementById('match');
+            let selYou = 'ARG', selOpp = 'ESP';
+            try { selYou = localStorage.getItem('ss_you') || 'ARG'; selOpp = localStorage.getItem('ss_opp') || 'ESP'; } catch (e) {}
+            if (!TEAMS[selYou]) selYou = 'ARG';
+            if (!TEAMS[selOpp]) selOpp = 'ESP';
+            function render() {
+                [[gy, () => selYou, c => { selYou = c; }], [go, () => selOpp, c => { selOpp = c; }]].forEach(function (cfg) {
+                    const grid = cfg[0], get = cfg[1], set = cfg[2];
+                    grid.innerHTML = '';
+                    Object.keys(TEAMS).forEach(function (code) {
+                        const b = document.createElement('button');
+                        b.type = 'button';
+                        b.className = 'ts-chip' + (code === get() ? ' sel' : '');
+                        b.innerHTML = '<span class="fl">' + TEAMS[code].flag + '</span><span class="cd">' + code + '</span>';
+                        b.onclick = function () { set(code); render(); };
+                        grid.appendChild(b);
+                    });
+                });
+                matchEl.textContent = TEAMS[selYou].flag + ' ' + selYou + '  vs  ' + selOpp + ' ' + TEAMS[selOpp].flag;
+            }
+            function apply() { kitYou = TEAMS[selYou].kit; kitOpp = TEAMS[selOpp].kit; }
+            apply(); render();
+            document.getElementById('ts-play').onclick = function () {
+                apply();
+                try { localStorage.setItem('ss_you', selYou); localStorage.setItem('ss_opp', selOpp); } catch (e) {}
+                overlay.style.display = 'none'; paused = false; reset(); initAudio();
+            };
+            document.getElementById('reopen').onclick = function () { paused = true; overlay.style.display = 'flex'; };
+        })();
 
         function loop() { update(); draw(); requestAnimationFrame(loop); }
         requestAnimationFrame(loop);
