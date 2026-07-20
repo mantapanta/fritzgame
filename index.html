@@ -126,11 +126,13 @@
 
         let phase = 'play';   // 'play' (dribbeln) | 'shot' | 'result'
 
+        const KSPEED = 5.2;   // max. horizontales Tempo des Torwarts
+        const KREACH = 34;    // Reichweite (Hände) beim Hechten
         let player, ball, keeper, facing;
         function reset() {
-            player = { x: 300, y: 720, run: 0 };
+            player = { x: 300, y: 720, run: 0, vx: 0, vy: 0 };
             ball = { x: 320, y: 700, vx: 0, vy: 0, spin: 0, spinDraw: 0 };
-            keeper = { x: GOAL_CX, dive: GOAL_CX, diving: false };
+            keeper = { x: GOAL_CX, dive: GOAL_CX, diving: false, react: 0, lean: 0 };
             facing = { x: 0, y: -1 };
             phase = 'play';
         }
@@ -240,20 +242,24 @@
             hint.style.opacity = '0';
 
             const iv = inputVector();
-            const aimX = Math.max(GOAL_L - 40, Math.min(GOAL_R + 40, GOAL_CX + iv.x * 150));
+            const aimX = Math.max(GOAL_L + 6, Math.min(GOAL_R - 6, GOAL_CX + iv.x * 74));
             let dx = aimX - ball.x, dy = 0 - ball.y;
             const d = Math.hypot(dx, dy) || 1;
-            const SPEED = 15;
+            const SPEED = 14;
             ball.vx = dx / d * SPEED;
             ball.vy = dy / d * SPEED;
-            ball.spin = iv.x * 0.25;
+            ball.spin = iv.x * 0.08;
 
-            // Torwart hechtet zur vorhergesagten Position (mit Fehler -> fair schlagbar)
+            // Torwart liest den Schuss und legt sich auf eine Ecke fest
+            // (wie in echt). Trifft er die Ecke -> Parade; platzierst du in die
+            // andere Ecke -> Tor. Reaktionszeit + Tempolimit machen ihn zusätzlich
+            // aus spitzem Winkel schlagbar.
             const tHit = (ball.y - KEEPER_LINE) / (-ball.vy);
             const predX = ball.x + ball.vx * tHit;
-            const err = (((attempts * 2654435761) >>> 12) % 130) - 65;
-            keeper.dive = Math.max(GOAL_L - 5, Math.min(GOAL_R + 5, predX + err));
+            const err = (((attempts * 2654435761) >>> 12) % 100) - 50;   // ±50 Leseungenauigkeit
+            keeper.dive = Math.max(GOAL_L - 14, Math.min(GOAL_R + 14, predX + err));
             keeper.diving = true;
+            keeper.react = 6;   // Frames Reaktionszeit
             sfx.kick();
         }
 
@@ -262,34 +268,50 @@
             const iv = inputVector();
 
             if (phase === 'play') {
-                const sprint = (sprintHeld || keys['shift']) ? 1.7 : 1;
-                const sp = 4.4 * iv.mag * sprint;
-                if (iv.mag > 0) {
-                    player.x += iv.x * sp;
-                    player.y += iv.y * sp;
-                    facing.x = iv.x; facing.y = iv.y;
-                    player.run += sp * 0.12;
-                }
+                // Spieler mit Trägheit/Momentum (beschleunigt & gleitet)
+                const sprint = (sprintHeld || keys['shift']) ? 1.62 : 1;
+                const maxSp = 4.3 * sprint * iv.mag;
+                const tvx = iv.x * maxSp, tvy = iv.y * maxSp;
+                player.vx += (tvx - player.vx) * 0.16;
+                player.vy += (tvy - player.vy) * 0.16;
+                player.x += player.vx; player.y += player.vy;
+                const spd = Math.hypot(player.vx, player.vy);
+                if (spd > 0.35) { facing.x = player.vx / spd; facing.y = player.vy / spd; player.run += spd * 0.13; }
                 player.x = Math.max(24, Math.min(FW - 24, player.x));
                 player.y = Math.max(KEEPER_LINE + 20, Math.min(FH - 24, player.y));
 
-                // Dribbling: Ball führt in Laufrichtung
-                const DR = 30;
-                ball.x += (player.x + facing.x * DR - ball.x) * 0.35;
-                ball.y += (player.y + facing.y * DR - ball.y) * 0.35;
-                ball.spinDraw += 0.15;
-
-                // Torwart bewegt sich lässig entlang der Linie und reagiert leicht auf den Ball
-                const idle = GOAL_CX + Math.sin(player.run * 0.1 + attempts) * 55;
-                const target = Math.max(GOAL_L + 15, Math.min(GOAL_R - 15, ball.x * 0.2 + idle * 0.8));
-                keeper.x += (target - keeper.x) * 0.05;
-            } else if (phase === 'shot') {
-                ball.vx += ball.spin * 0.15; ball.spin *= 0.985;
+                // Dribbling mit losem Kontakt: bei Tempo wird der Ball weiter
+                // vorgelegt (schwerer zu kontrollieren). Ball hat eigene Reibung.
+                const DR = 22 + spd * 3.2;
+                const grip = spd > 6 ? 0.22 : 0.3;
+                ball.vx += ((player.x + facing.x * DR) - ball.x) * grip;
+                ball.vy += ((player.y + facing.y * DR) - ball.y) * grip;
+                ball.vx *= 0.55; ball.vy *= 0.55;   // Dämpfung -> weiches Führen
                 ball.x += ball.vx; ball.y += ball.vy;
-                ball.spinDraw += 0.4;
-                if (keeper.diving) keeper.x += (keeper.dive - keeper.x) * 0.16;
+                ball.spinDraw += spd * 0.08 + 0.05;
 
-                if (ball.y <= 34 && Math.abs(ball.x - keeper.x) < 30) resolve('GEHALTEN!', '#ff9800', 'save');
+                // Torwart hält aktiv die Winkel, spiegelt Ballposition gedämpft
+                const idle = GOAL_CX + Math.sin(player.run * 0.08 + attempts) * 40;
+                const target = Math.max(GOAL_L + 12, Math.min(GOAL_R - 12, ball.x * 0.34 + idle * 0.66));
+                keeper.x += (target - keeper.x) * 0.07;
+                keeper.lean *= 0.85;
+            } else if (phase === 'shot') {
+                // Ballflug: Kurve (Magnus), Luft-/Rollreibung
+                ball.vx += ball.spin * 0.14; ball.spin *= 0.98;
+                ball.vx *= 0.992; ball.vy *= 0.992;
+                ball.x += ball.vx; ball.y += ball.vy;
+                ball.spinDraw += 0.42;
+
+                // Torwart hechtet zur festgelegten Ecke – begrenzt durch sein Tempo
+                if (keeper.react > 0) { keeper.react--; }
+                else {
+                    const dxk = keeper.dive - keeper.x;
+                    const step = Math.max(-KSPEED, Math.min(KSPEED, dxk));
+                    keeper.x += step;
+                    keeper.lean += (Math.sign(dxk) - keeper.lean) * 0.2;
+                }
+
+                if (ball.y <= 44 && ball.y > 0 && Math.abs(ball.x - keeper.x) < KREACH) resolve('GEHALTEN!', '#ff9800', 'save');
                 else if (ball.y <= 4) {
                     if (ball.x > GOAL_L && ball.x < GOAL_R) resolve('TOR!', '#38e06a', 'goal');
                     else resolve('VORBEI!', '#bbb', 'miss');
@@ -380,11 +402,16 @@
             // Figuren
             const drawKeeper = () => {
                 const p = project(keeper.x, KEEPER_LINE); drawShadow(p); const s = p.sc;
-                ctx.fillStyle = '#ff3b3b'; roundRect(p.sx - 11 * s, p.sy - 30 * s, 22 * s, 22 * s, 4 * s);
-                ctx.fillStyle = '#111'; ctx.fillRect(p.sx - 11 * s, p.sy - 12 * s, 22 * s, 9 * s);
-                ctx.fillStyle = '#ffdbac'; ctx.beginPath(); ctx.arc(p.sx, p.sy - 36 * s, 6 * s, 0, 7); ctx.fill();
-                ctx.fillStyle = '#fff'; const g = phase === 'shot' ? 17 : 13;
-                ctx.beginPath(); ctx.arc(p.sx - g * s, p.sy - 24 * s, 4 * s, 0, 7); ctx.arc(p.sx + g * s, p.sy - 24 * s, 4 * s, 0, 7); ctx.fill();
+                const ln = keeper.lean * 8 * s;   // Hechtneigung
+                ctx.fillStyle = '#ff3b3b'; roundRect(p.sx - 11 * s + ln, p.sy - 30 * s, 22 * s, 22 * s, 4 * s);
+                ctx.fillStyle = '#111'; ctx.fillRect(p.sx - 11 * s + ln, p.sy - 12 * s, 22 * s, 9 * s);
+                ctx.fillStyle = '#ffdbac'; ctx.beginPath(); ctx.arc(p.sx + ln, p.sy - 36 * s, 6 * s, 0, 7); ctx.fill();
+                // Handschuhe strecken sich beim Hechten in die Flugrichtung
+                ctx.fillStyle = '#fff'; const g = phase === 'shot' ? 19 : 13;
+                ctx.beginPath();
+                ctx.arc(p.sx - g * s + ln * 1.6, p.sy - 24 * s, 4.2 * s, 0, 7);
+                ctx.arc(p.sx + g * s + ln * 1.6, p.sy - 24 * s, 4.2 * s, 0, 7);
+                ctx.fill();
             };
             const drawPlayer = () => {
                 const p = project(player.x, player.y); drawShadow(p);
