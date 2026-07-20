@@ -67,11 +67,13 @@
             background: rgba(0,0,0,0.55); color: #fff; border: 1px solid rgba(255,255,255,0.18);
             border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: bold; cursor: pointer;
         }
-        #teamSelect {
-            position: absolute; inset: 0; z-index: 200; display: flex;
+        #teamSelect, #mpLobby, #mpEnd {
+            position: absolute; inset: 0; z-index: 200;
             align-items: center; justify-content: center;
             background: rgba(4,10,7,0.86); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
         }
+        #teamSelect { display: flex; }
+        #mpLobby, #mpEnd { display: none; }
         .ts-card {
             width: 92%; max-width: 520px; padding: 20px;
             background: linear-gradient(160deg, #0e2a17, #0a1f13);
@@ -98,7 +100,30 @@
             color: #06110b; background: linear-gradient(145deg, #38e06a, #16b34a);
             border: none; border-radius: 12px; cursor: pointer; box-shadow: 0 6px 18px rgba(56,224,106,0.35);
         }
+        .ts-online {
+            width: 100%; margin-top: 10px; padding: 13px; font-size: 15px; font-weight: 800; letter-spacing: 1px;
+            color: #fff; background: rgba(0,180,219,0.18); border: 2px solid #00b4db;
+            border-radius: 12px; cursor: pointer;
+        }
+        .mp-btn {
+            width: 100%; margin-top: 10px; padding: 14px; font-size: 16px; font-weight: 800;
+            color: #06110b; background: linear-gradient(145deg, #38e06a, #16b34a);
+            border: none; border-radius: 12px; cursor: pointer;
+        }
+        .mp-btn.sec { color: #fff; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25); }
+        .mp-code {
+            width: 100%; margin-top: 8px; padding: 13px; font-size: 22px; font-weight: 900; letter-spacing: 4px;
+            text-align: center; text-transform: uppercase;
+            background: rgba(255,255,255,0.08); border: 2px solid rgba(255,255,255,0.2); border-radius: 12px; color: #fff;
+        }
+        #mp-codebox { text-align: center; font-size: 40px; font-weight: 900; letter-spacing: 8px; color: #38e06a; margin: 10px 0; }
+        #mp-status { text-align: center; font-size: 14px; color: #8fdcae; margin-top: 10px; min-height: 18px; }
+        .mp-sep { text-align: center; color: rgba(255,255,255,0.4); margin: 14px 0 6px; font-size: 12px; letter-spacing: 2px; }
+        #mpEnd .ts-title { font-size: 40px; }
+        #mp-endscore { text-align: center; font-size: 30px; font-weight: 900; margin: 6px 0 4px; }
+        #mp-endsub { text-align: center; font-size: 14px; color: #8fdcae; }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div id="wrap">
@@ -123,6 +148,32 @@
                 <div class="ts-label">VERTEIDIGER (nur Freies Spiel)</div>
                 <div class="ts-row" id="row-def"></div>
                 <button id="ts-play" class="ts-play" type="button">SPIELEN ⚽</button>
+                <button id="ts-online" class="ts-online" type="button">🌐 ONLINE 1v1 (Elfmeterschießen)</button>
+            </div>
+        </div>
+
+        <div id="mpLobby" style="display:none;">
+            <div class="ts-card">
+                <div class="ts-title">🌐 ONLINE 1v1</div>
+                <div class="ts-label">DEIN TEAM</div>
+                <div class="ts-grid" id="mp-team"></div>
+                <button id="mp-host" class="mp-btn" type="button">RAUM ERSTELLEN</button>
+                <div id="mp-codebox" style="display:none;"></div>
+                <div class="mp-sep">— ODER —</div>
+                <input id="mp-input" class="mp-code" type="text" maxlength="4" placeholder="CODE" autocomplete="off">
+                <button id="mp-join" class="mp-btn" type="button">BEITRETEN</button>
+                <div id="mp-status"></div>
+                <button id="mp-back" class="mp-btn sec" type="button">← Zurück</button>
+            </div>
+        </div>
+
+        <div id="mpEnd" style="display:none;">
+            <div class="ts-card">
+                <div class="ts-title" id="mp-endtitle">🏆</div>
+                <div id="mp-endscore">0 : 0</div>
+                <div id="mp-endsub"></div>
+                <button id="mp-rematch" class="mp-btn" type="button">🔁 REVANCHE</button>
+                <button id="mp-leave" class="mp-btn sec" type="button">Verlassen</button>
             </div>
         </div>
     </div>
@@ -198,7 +249,7 @@
             return arr;
         }
         function reset() {
-            if (mode === 'penalty') {
+            if (mode === 'penalty' || mode === 'online') {
                 player = { x: 300, y: 250, run: 0, vx: 0, vy: 0 };
                 ball = { x: 300, y: 232, vx: 0, vy: 0, spin: 0, spinDraw: 0, trail: [], arc: 0, high: false };
             } else {
@@ -227,6 +278,17 @@
         };
         let kitYou = TEAMS.ARG.kit, kitOpp = TEAMS.ESP.kit;
         let paused = true;   // bis Team gewählt
+
+        // ===== Online-Multiplayer (P2P, rundenbasiertes Elfmeterschießen) =====
+        const online = {
+            active: false, connected: false, isHost: false,
+            myTeam: 'ARG', oppTeam: 'ESP', hostTeam: 'ARG', guestTeam: 'ESP',
+            round: 0, scoreHost: 0, scoreGuest: 0, sd: false, over: false, winner: '',
+            role: '', shooterIsHost: true, oPhase: 'idle', keeperX: GOAL_CX, lastOutcome: ''
+        };
+        let transport = null;                 // { send(obj) } – PeerJS oder Test-Loopback
+        function netSend(o) { if (transport) transport.send(o); }
+        const GOAL_HALF = (GOAL_R - GOAL_L) / 2;
 
         // ===== vorberechnete Ränge =====
         const crowd = [];
@@ -333,10 +395,26 @@
             return phase === 'play' && Math.hypot(player.x - ball.x, player.y - ball.y) < 46;
         }
 
-        function canShoot() { return !paused && phase === 'play' && (mode === 'penalty' || hasBall()); }
+        function canShoot() {
+            if (paused || phase !== 'play') return false;
+            if (online.active) {
+                if (online.role === 'shoot') return online.oPhase === 'aim';
+                if (online.role === 'keep') return online.oPhase === 'commit';
+                return false;
+            }
+            return mode === 'penalty' || hasBall();
+        }
         function cycleShot() { shotType = SHOT_TYPES[(SHOT_TYPES.indexOf(shotType) + 1) % SHOT_TYPES.length]; }
-        function beginCharge() { if (!canShoot()) return; charging = true; power = 0.4; }
-        function releaseShoot() { if (!charging) return; charging = false; doShoot(power, null); power = 0; }
+        function beginCharge() {
+            if (!canShoot()) return;
+            if (online.active && online.role === 'keep') { keeperCommit(keeper.x); return; }
+            charging = true; power = 0.4;
+        }
+        function releaseShoot() {
+            if (!charging) return; charging = false;
+            if (online.active && online.role === 'shoot') { shooterShoot(inputVector().x, power, shotType); power = 0; return; }
+            doShoot(power, null); power = 0;
+        }
 
         function doShoot(pw, aimOverride) {
             initAudio();
@@ -358,12 +436,17 @@
             const dx = aimX - ball.x, dy = 0 - ball.y, d = Math.hypot(dx, dy) || 1;
             ball.vx = dx / d * SPEED; ball.vy = dy / d * SPEED;
 
-            // Torwart liest die (gerade) Zielrichtung und wirft sich dorthin – aber
-            // mit Reaktionszeit, Tempolimit und Lesefehler -> Ecken/Effet/Pace schlagen ihn.
-            const tHit = (ball.y - KEEPER_LINE) / (-ball.vy);
-            const predX = ball.x + ball.vx * tHit;
-            const err = (((attempts * 2654435761) >>> 12) % (KERR * 2)) - KERR;
-            keeper.dive = Math.max(GOAL_L - 12, Math.min(GOAL_R + 12, predX + err));
+            if (online.active) {
+                // Online: der menschliche Torwart hat sich bereits auf eine Ecke festgelegt.
+                keeper.x = GOAL_CX;   // beide Seiten hechten aus der Mitte -> gleiche Animation
+                keeper.dive = Math.max(GOAL_L - 12, Math.min(GOAL_R + 12, online.keeperX));
+            } else {
+                // Solo: KI liest die (gerade) Zielrichtung, mit Reaktionszeit/Tempo/Lesefehler.
+                const tHit = (ball.y - KEEPER_LINE) / (-ball.vy);
+                const predX = ball.x + ball.vx * tHit;
+                const err = (((attempts * 2654435761) >>> 12) % (KERR * 2)) - KERR;
+                keeper.dive = Math.max(GOAL_L - 12, Math.min(GOAL_R + 12, predX + err));
+            }
             keeper.diving = true; keeper.react = KREACT; keeper.dip = 0;
             keeper.diveDir = Math.sign(keeper.dive - keeper.x) || 1; keeper.diveT = 0;
             sfx.kick();
@@ -376,7 +459,17 @@
             const iv = inputVector();
 
             if (phase === 'play') {
-                if (mode === 'free') {
+                if (mode === 'online') {
+                    // Torwart darf seine Ecke live wählen (nur lokaler Keeper in der Commit-Phase)
+                    if (online.role === 'keep' && online.oPhase === 'commit') {
+                        const tx = GOAL_CX + iv.x * (GOAL_HALF - 24);
+                        keeper.x += (tx - keeper.x) * 0.3;
+                    } else {
+                        keeper.x += (GOAL_CX - keeper.x) * 0.12;
+                    }
+                    if (online.role === 'shoot' && iv.mag > 0.15) { facing.x = iv.x; facing.y = -1; }
+                    keeper.lean *= 0.85; keeper.dip *= 0.9;
+                } else if (mode === 'free') {
                     // Spieler mit Trägheit/Momentum (beschleunigt & gleitet)
                     const sprint = (sprintHeld || keys['shift']) ? 1.62 : 1;
                     const maxSp = 4.3 * sprint * iv.mag;
@@ -405,16 +498,16 @@
                         df.x = Math.max(20, Math.min(FW - 20, df.x)); df.y = Math.max(KEEPER_LINE + 20, Math.min(FH - 20, df.y));
                         if (hasBall() && dl < 24) { resolve('BALL WEG!', '#ff6b6b', 'miss'); break; }
                     }
+                    const idle = GOAL_CX + Math.sin((player.run + attempts) * 0.08) * 46;
+                    keeper.x += (Math.max(GOAL_L + 14, Math.min(GOAL_R - 14, ball.x * 0.3 + idle * 0.7)) - keeper.x) * 0.07;
+                    keeper.lean *= 0.85; keeper.dip *= 0.9;
                 } else {
-                    // Elfmeter: kein Laufen, Ball liegt auf dem Punkt – Joystick nur zum Zielen
+                    // Elfmeter (Solo): kein Laufen, nur zielen
                     if (iv.mag > 0.15) { facing.x = iv.x; facing.y = -1; }
+                    const idle = GOAL_CX + Math.sin((player.run + attempts) * 0.08) * 46;
+                    keeper.x += (Math.max(GOAL_L + 14, Math.min(GOAL_R - 14, ball.x * 0.3 + idle * 0.7)) - keeper.x) * 0.07;
+                    keeper.lean *= 0.85; keeper.dip *= 0.9;
                 }
-
-                // Torwart hält die Winkel
-                const idle = GOAL_CX + Math.sin((player.run + attempts) * 0.08) * 46;
-                const target = Math.max(GOAL_L + 14, Math.min(GOAL_R - 14, ball.x * 0.3 + idle * 0.7));
-                keeper.x += (target - keeper.x) * 0.07;
-                keeper.lean *= 0.85; keeper.dip *= 0.9;
             } else if (phase === 'shot') {
                 ball.vx += ball.spin * ball.magnus; ball.spin *= 0.995;
                 ball.vy *= 0.997;
@@ -466,6 +559,13 @@
             phase = 'result';
             popup.textContent = text; popup.style.color = color; popup.classList.add('show-popup');
             if (sfx[kind]) sfx[kind]();
+            if (online.active) {
+                // Online: kein Solo-Scoring; der Host wertet aus und steuert die Runde.
+                online.lastOutcome = (kind === 'goal') ? 'goal' : 'miss';
+                online.oPhase = 'reveal';
+                if (online.isHost) setTimeout(hostAfterKick, 1500);
+                return;
+            }
             if (kind === 'goal') {
                 score++;
                 if (score > best) { best = score; bestEl.textContent = best; try { localStorage.setItem('ss_best', String(best)); } catch (e) {} }
@@ -681,8 +781,8 @@
             cg.addColorStop(0, '#ffffff'); cg.addColorStop(1, '#c4c4c4');
             ctx.fillStyle = cg; rrPath(lp.sx - postW / 2, lp.sy - goalH - postW / 2, (rp.sx - lp.sx) + postW, postW, postW / 2); ctx.fill();
 
-            // ===== Ziel-Hilfe: zeigt, wohin der Ball fliegt =====
-            if (phase === 'play' && canShoot()) {
+            // ===== Ziel-Hilfe: zeigt, wohin der Ball fliegt (nicht für den Torwart) =====
+            if (phase === 'play' && canShoot() && (!online.active || online.role === 'shoot')) {
                 const axx = inputVector().x;
                 const span = shotType === 'power' ? 120 : shotType === 'lupfer' ? 96 : 84;
                 const tX = Math.max(GOAL_L - 6, Math.min(GOAL_R + 6, GOAL_CX + axx * span));
@@ -745,7 +845,41 @@
             // Vignette über die Szene (Controls kommen darüber)
             ctx.fillStyle = vignette; ctx.fillRect(0, 0, CW, CH);
 
+            if (online.active) drawOnlineHud();
             drawControls();
+        }
+
+        function drawOnlineHud() {
+            const myScore = online.isHost ? online.scoreHost : online.scoreGuest;
+            const opScore = online.isHost ? online.scoreGuest : online.scoreHost;
+            const myFlag = TEAMS[online.myTeam] ? TEAMS[online.myTeam].flag : '';
+            const opFlag = TEAMS[online.oppTeam] ? TEAMS[online.oppTeam].flag : '';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            // Scoreboard
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            rrPath(CW / 2 - 130, 12, 260, 40, 10); ctx.fill();
+            ctx.font = 'bold 22px Segoe UI, sans-serif'; ctx.fillStyle = '#fff';
+            ctx.fillText(myFlag + ' ' + myScore + '  :  ' + opScore + ' ' + opFlag, CW / 2, 33);
+            // Runde / Rolle
+            ctx.font = 'bold 12px Segoe UI, sans-serif'; ctx.fillStyle = '#8fdcae';
+            const rl = online.sd ? 'SUDDEN DEATH' : 'Runde ' + Math.ceil(online.round / 2) + ' / 5';
+            ctx.fillText(rl, CW / 2, 62);
+            // Prompt (nur während des Zugs)
+            if (phase === 'play') {
+                let msg = '';
+                if (online.oPhase === 'commit' && online.role === 'keep') msg = '🧤 WÄHLE DEINE ECKE – SCHUSS = festlegen';
+                else if (online.oPhase === 'commit' && online.role === 'shoot') msg = 'Gegner wählt die Ecke…';
+                else if (online.oPhase === 'waitShot' && online.role === 'keep') msg = 'Gegner schießt…';
+                else if (online.oPhase === 'aim' && online.role === 'shoot') msg = '⚽ SCHIESSEN! (Joystick zielen · SCHUSS halten)';
+                if (msg) {
+                    ctx.font = 'bold 15px Segoe UI, sans-serif';
+                    const w = ctx.measureText(msg).width + 24;
+                    ctx.fillStyle = 'rgba(0,0,0,0.55)'; rrPath(CW / 2 - w / 2, 74, w, 30, 8); ctx.fill();
+                    ctx.fillStyle = online.role === 'shoot' && online.oPhase === 'aim' ? '#38e06a' : '#fff';
+                    ctx.fillText(msg, CW / 2, 89);
+                }
+            }
+            ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
         }
 
         function drawControls() {
@@ -843,6 +977,210 @@
             };
             document.getElementById('reopen').onclick = function () { paused = true; overlay.style.display = 'flex'; };
         })();
+
+        // ===================== ONLINE-MULTIPLAYER =====================
+        let peer = null, conn = null;
+
+        // ---- Rundenlogik (rundenbasiertes Elfmeterschießen) ----
+        function setupRound(shooterIsHost) {
+            online.shooterIsHost = shooterIsHost;
+            online.role = (shooterIsHost === online.isHost) ? 'shoot' : 'keep';
+            const shooterTeam = shooterIsHost ? online.hostTeam : online.guestTeam;
+            const keeperTeam = shooterIsHost ? online.guestTeam : online.hostTeam;
+            kitYou = (TEAMS[shooterTeam] || TEAMS.ARG).kit;
+            kitOpp = (TEAMS[keeperTeam] || TEAMS.ESP).kit;
+            online.keeperX = GOAL_CX;
+            online.oPhase = 'commit';
+            popup.classList.remove('show-popup');
+            reset();
+        }
+        function keeperCommit(x) {
+            if (!online.active || online.role !== 'keep' || online.oPhase !== 'commit') return;
+            online.keeperX = Math.max(GOAL_L + 6, Math.min(GOAL_R - 6, x));
+            online.oPhase = 'waitShot';
+            netSend({ t: 'keeperDive', x: online.keeperX });
+        }
+        function shooterShoot(aim, pw, type) {
+            if (!online.active || online.role !== 'shoot' || online.oPhase !== 'aim') return;
+            shotType = type || shotType;
+            online.oPhase = 'sim';
+            netSend({ t: 'shot', aim: aim, pw: pw, shotType: shotType });
+            doShoot(pw, aim);
+        }
+        function startMatch() {   // nur Host
+            online.round = 0; online.scoreHost = 0; online.scoreGuest = 0; online.sd = false; online.over = false;
+            hostNextRound();
+        }
+        function hostNextRound() {
+            online.round++;
+            const shooterIsHost = (online.round % 2 === 1);
+            netSend({ t: 'roundStart', round: online.round, shooterIsHost: shooterIsHost, sHost: online.scoreHost, sGuest: online.scoreGuest, sd: online.sd, hostTeam: online.hostTeam, guestTeam: online.guestTeam });
+            setupRound(shooterIsHost);
+        }
+        function hostAfterKick() {
+            if (online.lastOutcome === 'goal') { if (online.shooterIsHost) online.scoreHost++; else online.scoreGuest++; }
+            const dec = checkDecided();
+            netSend({ t: 'result', outcome: online.lastOutcome, sHost: online.scoreHost, sGuest: online.scoreGuest, over: dec.over, winner: dec.winner });
+            if (dec.over) { online.over = true; online.winner = dec.winner; showEnd(); }
+            else { hostNextRound(); }
+        }
+        function checkDecided() {
+            const h = online.scoreHost, g = online.scoreGuest;
+            const hostKicks = Math.ceil(online.round / 2), guestKicks = Math.floor(online.round / 2);
+            if (!online.sd) {
+                const remH = 5 - hostKicks, remG = 5 - guestKicks;
+                if (h > g + remG) return { over: true, winner: 'host' };
+                if (g > h + remH) return { over: true, winner: 'guest' };
+                if (hostKicks >= 5 && guestKicks >= 5) {
+                    if (h !== g) return { over: true, winner: h > g ? 'host' : 'guest' };
+                    online.sd = true; return { over: false };
+                }
+                return { over: false };
+            }
+            if (online.round % 2 === 0 && h !== g) return { over: true, winner: h > g ? 'host' : 'guest' };
+            return { over: false };
+        }
+        function handleMsg(m) {
+            if (!m || !m.t) return;
+            if (m.t === 'hello') {
+                online.oppTeam = m.team || online.oppTeam;
+                online.hostTeam = online.isHost ? online.myTeam : online.oppTeam;
+                online.guestTeam = online.isHost ? online.oppTeam : online.myTeam;
+                if (online.isHost) startMatch();
+            } else if (m.t === 'roundStart') {
+                hideEnd(); online.over = false;
+                online.scoreHost = m.sHost; online.scoreGuest = m.sGuest; online.round = m.round; online.sd = m.sd;
+                online.hostTeam = m.hostTeam; online.guestTeam = m.guestTeam;
+                online.oppTeam = online.isHost ? online.guestTeam : online.hostTeam;
+                setupRound(m.shooterIsHost);
+            } else if (m.t === 'keeperDive') {
+                online.keeperX = m.x;
+                if (online.role === 'shoot') online.oPhase = 'aim';
+            } else if (m.t === 'shot') {
+                shotType = m.shotType || shotType;
+                if (online.role === 'keep') { online.oPhase = 'sim'; doShoot(m.pw, m.aim); }
+            } else if (m.t === 'result') {
+                online.scoreHost = m.sHost; online.scoreGuest = m.sGuest;
+                if (m.over) { online.over = true; online.winner = m.winner; setTimeout(showEnd, 400); }
+            } else if (m.t === 'rematch') {
+                hideEnd(); online.over = false; online.scoreHost = 0; online.scoreGuest = 0;
+                if (online.isHost) startMatch();
+            } else if (m.t === 'bye') {
+                onlineLeave('Gegner hat das Spiel verlassen.');
+            }
+        }
+
+        // ---- Lifecycle / Overlays ----
+        function el(id) { return document.getElementById(id); }
+        function hideAllOverlays() { el('teamSelect').style.display = 'none'; el('mpLobby').style.display = 'none'; el('mpEnd').style.display = 'none'; }
+        function beginOnline(isHost, myTeam, trans) {
+            online.active = true; online.connected = true; online.isHost = isHost;
+            online.myTeam = myTeam; online.over = false; online.oPhase = 'connecting';
+            online.hostTeam = isHost ? myTeam : online.oppTeam;
+            online.guestTeam = isHost ? online.oppTeam : myTeam;
+            transport = trans; mode = 'online'; paused = false;
+            hideAllOverlays();
+            el('ui-layer').style.display = 'none'; el('hint').style.display = 'none'; el('reopen').style.display = 'none';
+            reset();
+            netSend({ t: 'hello', team: myTeam });
+        }
+        function onlineLeave(reason) {
+            online.active = false; online.connected = false;
+            try { netSend({ t: 'bye' }); } catch (e) {}
+            try { if (peer) peer.destroy(); } catch (e) {}
+            peer = null; conn = null; transport = null;
+            hideEnd();
+            el('ui-layer').style.display = ''; el('hint').style.display = ''; el('reopen').style.display = '';
+            paused = true; mode = 'penalty';
+            el('teamSelect').style.display = 'flex';
+            if (reason) setTimeout(function () { try { alert(reason); } catch (e) {} }, 50);
+        }
+        function showEnd() {
+            const myScore = online.isHost ? online.scoreHost : online.scoreGuest;
+            const opScore = online.isHost ? online.scoreGuest : online.scoreHost;
+            const iWon = (online.winner === 'host') === online.isHost;
+            el('mp-endtitle').textContent = iWon ? '🏆 GEWONNEN!' : '😞 VERLOREN';
+            el('mp-endscore').textContent = myScore + ' : ' + opScore;
+            el('mp-endsub').textContent = iWon ? 'Stark geschossen!' : 'Nächstes Mal!';
+            el('mpEnd').style.display = 'flex';
+        }
+        function hideEnd() { el('mpEnd').style.display = 'none'; }
+
+        // ---- PeerJS-Transport (WebRTC, P2P) ----
+        function genCode() { const a = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 4; i++) s += a[Math.floor(Math.random() * a.length)]; return s; }
+        function peerConfig() {
+            return { config: { iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+                { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+            ] } };
+        }
+        function setStatus(t) { const e = el('mp-status'); if (e) e.textContent = t; }
+        function wireConn(isHost, myTeam) {
+            conn.on('open', function () {
+                const t = { send: function (o) { try { conn.send(JSON.stringify(o)); } catch (e) {} } };
+                setStatus('Verbunden!');
+                conn.on('data', function (d) { try { handleMsg(typeof d === 'string' ? JSON.parse(d) : d); } catch (e) {} });
+                conn.on('close', function () { if (online.active) onlineLeave('Verbindung getrennt.'); });
+                beginOnline(isHost, myTeam, t);
+            });
+        }
+        function hostRoom(myTeam) {
+            if (typeof Peer === 'undefined') { setStatus('Netzwerk nicht verfügbar (offline?).'); return; }
+            const code = genCode();
+            setStatus('Raum wird erstellt…');
+            peer = new Peer('sskick-' + code, peerConfig());
+            peer.on('open', function () { const b = el('mp-codebox'); b.style.display = 'block'; b.textContent = code; setStatus('Warte auf Gegner – Code teilen!'); });
+            peer.on('connection', function (c) { conn = c; wireConn(true, myTeam); });
+            peer.on('error', function (e) { setStatus('Fehler: ' + (e && e.type ? e.type : '?')); });
+        }
+        function joinRoom(code, myTeam) {
+            if (typeof Peer === 'undefined') { setStatus('Netzwerk nicht verfügbar (offline?).'); return; }
+            if (!code || code.length < 4) { setStatus('Bitte 4-stelligen Code eingeben.'); return; }
+            setStatus('Verbinde…');
+            peer = new Peer(null, peerConfig());
+            peer.on('open', function () { conn = peer.connect('sskick-' + code.toUpperCase(), { reliable: true }); wireConn(false, myTeam); });
+            peer.on('error', function (e) { setStatus('Fehler: ' + (e && e.type ? e.type : '?') + ' – Code korrekt?'); });
+        }
+
+        // ---- Lobby-UI ----
+        (function lobbyUI() {
+            let mpTeam = 'ARG';
+            try { mpTeam = localStorage.getItem('ss_you') || 'ARG'; } catch (e) {}
+            if (!TEAMS[mpTeam]) mpTeam = 'ARG';
+            online.myTeam = mpTeam;
+            const grid = el('mp-team');
+            function renderTeams() {
+                grid.innerHTML = '';
+                Object.keys(TEAMS).forEach(function (code) {
+                    const b = document.createElement('button'); b.type = 'button';
+                    b.className = 'ts-chip' + (code === mpTeam ? ' sel' : '');
+                    b.innerHTML = '<span class="fl">' + TEAMS[code].flag + '</span><span class="cd">' + code + '</span>';
+                    b.onclick = function () { mpTeam = code; online.myTeam = code; renderTeams(); };
+                    grid.appendChild(b);
+                });
+            }
+            renderTeams();
+            el('ts-online').onclick = function () { el('teamSelect').style.display = 'none'; el('mpLobby').style.display = 'flex'; initAudio(); };
+            el('mp-back').onclick = function () { el('mpLobby').style.display = 'none'; el('teamSelect').style.display = 'flex'; };
+            el('mp-host').onclick = function () { hostRoom(mpTeam); };
+            el('mp-join').onclick = function () { joinRoom((el('mp-input').value || '').trim(), mpTeam); };
+            el('mp-rematch').onclick = function () {
+                hideEnd(); online.over = false;
+                if (online.isHost) { online.scoreHost = 0; online.scoreGuest = 0; startMatch(); } else { netSend({ t: 'rematch' }); }
+            };
+            el('mp-leave').onclick = function () { onlineLeave(); };
+        })();
+
+        // ---- Debug-Hook fürs automatisierte Testen (Transport-Loopback) ----
+        window.__net = {
+            state: function () { return { active: online.active, isHost: online.isHost, role: online.role, oPhase: online.oPhase, round: online.round, sHost: online.scoreHost, sGuest: online.scoreGuest, over: online.over, winner: online.winner, keeperX: online.keeperX, sd: online.sd }; },
+            outbox: [],
+            startAs: function (isHost, myTeam, oppTeam) { online.oppTeam = oppTeam; const t = { send: function (o) { window.__net.outbox.push(o); } }; beginOnline(isHost, myTeam, t); },
+            recv: function (o) { handleMsg(o); },
+            commit: function (x) { keeperCommit(x); },
+            shoot: function (aim, pw, type) { shooterShoot(aim, pw, type); }
+        };
 
         function loop() { update(); draw(); requestAnimationFrame(loop); }
         requestAnimationFrame(loop);
