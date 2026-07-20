@@ -89,6 +89,10 @@
         .ts-chip .fl { font-size: 24px; line-height: 1; }
         .ts-chip .cd { font-size: 11px; font-weight: bold; color: #cfe; }
         .ts-chip.sel { border-color: #38e06a; background: rgba(56,224,106,0.16); box-shadow: 0 0 12px rgba(56,224,106,0.3); }
+        .ts-row { display: flex; gap: 8px; }
+        .ts-opt { flex: 1; padding: 11px 4px; text-align: center; background: rgba(255,255,255,0.06); border: 2px solid transparent; border-radius: 10px; cursor: pointer; color: #fff; font-weight: bold; font-size: 14px; }
+        .ts-opt.sel { border-color: #38e06a; background: rgba(56,224,106,0.16); }
+        .ts-opt.dis { opacity: 0.35; }
         .ts-play {
             width: 100%; margin-top: 18px; padding: 15px; font-size: 18px; font-weight: 900; letter-spacing: 1px;
             color: #06110b; background: linear-gradient(145deg, #38e06a, #16b34a);
@@ -105,7 +109,7 @@
             <div class="hud-box">SCHÜSSE <span id="attempts">0</span> <span id="flagOpp">🇪🇸</span></div>
         </div>
         <div id="popups">TOR!</div>
-        <div id="hint">Linke Hälfte: Joystick zum Laufen & Dribbeln · Rechts: SCHUSS / SPRINT</div>
+        <div id="hint">Joystick = Laufen/Zielen · SCHUSS halten = Power · Button links = Schussart (Effet/Power/Lupfer)</div>
         <button id="reopen" type="button">⇄ Teams</button>
         <div id="teamSelect">
             <div class="ts-card">
@@ -114,6 +118,10 @@
                 <div class="ts-grid" id="grid-you"></div>
                 <div class="ts-label">GEGNER (Torwart)</div>
                 <div class="ts-grid" id="grid-opp"></div>
+                <div class="ts-label">MODUS</div>
+                <div class="ts-row" id="row-mode"></div>
+                <div class="ts-label">VERTEIDIGER (nur Freies Spiel)</div>
+                <div class="ts-row" id="row-def"></div>
                 <button id="ts-play" class="ts-play" type="button">SPIELEN ⚽</button>
             </div>
         </div>
@@ -160,8 +168,14 @@
             };
         }
 
-        // Tor (Weltkoordinaten)
-        const GOAL_L = 205, GOAL_R = 395, GOAL_CX = 300, KEEPER_LINE = 30;
+        // Tor (Weltkoordinaten) – größeres Tor
+        const GOAL_L = 168, GOAL_R = 432, GOAL_CX = 300, KEEPER_LINE = 30;
+        // Modi & Schussarten
+        let mode = 'free';        // 'free' | 'penalty'
+        let defCount = 0;         // Verteidiger 0..2
+        let shotType = 'effet';   // 'effet' | 'power' | 'lupfer'
+        const SHOT_TYPES = ['effet', 'power', 'lupfer'];
+        const SHOT_LABEL = { effet: '🌀 EFFET', power: '⚡ POWER', lupfer: '🥅 LUPFER' };
 
         // ===== Zustand =====
         let score = 0, attempts = 0, best = 0;
@@ -170,14 +184,31 @@
 
         let phase = 'play';   // 'play' (dribbeln) | 'shot' | 'result'
 
-        const KSPEED = 5.2;   // max. horizontales Tempo des Torwarts
-        const KREACH = 34;    // Reichweite (Hände) beim Hechten
-        let player, ball, keeper, facing;
+        const KSPEED = 4.7;   // Tempo des Torwarts (langsamer -> schwächer)
+        const KREACH = 30;    // Reichweite beim Hechten
+        const KERR = 44;      // Leseungenauigkeit ± (höher = schwächer)
+        const KREACT = 7;     // Reaktions-Frames
+        let charging = false, power = 0;
+        let player, ball, keeper, facing, defenders;
+        function spawnDefenders() {
+            const arr = [];
+            if (mode !== 'free') return arr;
+            const spots = defCount === 1 ? [[300, 470]] : defCount === 2 ? [[250, 500], [350, 440]] : [];
+            for (const s of spots) arr.push({ x: s[0], y: s[1], vx: 0, vy: 0, num: '4' });
+            return arr;
+        }
         function reset() {
-            player = { x: 300, y: 720, run: 0, vx: 0, vy: 0 };
-            ball = { x: 320, y: 700, vx: 0, vy: 0, spin: 0, spinDraw: 0, trail: [] };
-            keeper = { x: GOAL_CX, dive: GOAL_CX, diving: false, react: 0, lean: 0 };
+            if (mode === 'penalty') {
+                player = { x: 300, y: 250, run: 0, vx: 0, vy: 0 };
+                ball = { x: 300, y: 232, vx: 0, vy: 0, spin: 0, spinDraw: 0, trail: [], arc: 0, high: false };
+            } else {
+                player = { x: 300, y: 720, run: 0, vx: 0, vy: 0 };
+                ball = { x: 320, y: 700, vx: 0, vy: 0, spin: 0, spinDraw: 0, trail: [], arc: 0, high: false };
+            }
+            keeper = { x: GOAL_CX, dive: GOAL_CX, diving: false, react: 0, lean: 0, dip: 0 };
+            defenders = spawnDefenders();
             facing = { x: 0, y: -1 };
+            charging = false; power = 0;
             phase = 'play';
         }
         reset();
@@ -223,17 +254,23 @@
 
         // ===== Eingaben (Tastatur für Desktop/Test) =====
         const keys = {};
+        let spaceHeld = false;
         window.addEventListener('keydown', e => {
             keys[e.key.toLowerCase()] = true;
-            if (e.key === ' ') { e.preventDefault(); shoot(); }
+            if (e.key === ' ') { e.preventDefault(); if (!spaceHeld) { spaceHeld = true; beginCharge(); } }
+            if (e.key.toLowerCase() === 'q') cycleShot();
         });
-        window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+        window.addEventListener('keyup', e => {
+            keys[e.key.toLowerCase()] = false;
+            if (e.key === ' ') { spaceHeld = false; releaseShoot(); }
+        });
 
         // ===== Touch: floating Joystick (links) + Buttons (rechts) =====
         let joy = { active: false, id: null, bx: 0, by: 0, dx: 0, dy: 0, mag: 0 };
         let sprintHeld = false;
-        const shootBtn = { x: CW - 92, y: CH - 96, r: 58 };
+        const shootBtn = { x: CW - 92, y: CH - 96, r: 58, id: null };
         const sprintBtn = { x: CW - 150, y: CH - 210, r: 42, id: null };
+        const shotBtn = { x: 66, y: CH - 250, r: 40 };   // Schussart umschalten
 
         function toLocal(t) {
             const r = canvas.getBoundingClientRect();
@@ -245,7 +282,8 @@
             initAudio();
             for (const t of e.changedTouches) {
                 const p = toLocal(t);
-                if (inBtn(p, shootBtn)) { shoot(); continue; }
+                if (inBtn(p, shootBtn)) { shootBtn.id = t.identifier; beginCharge(); continue; }
+                if (inBtn(p, shotBtn)) { cycleShot(); continue; }
                 if (inBtn(p, sprintBtn)) { sprintHeld = true; sprintBtn.id = t.identifier; continue; }
                 if (!joy.active && p.x < CW * 0.58) {
                     joy.active = true; joy.id = t.identifier; joy.bx = p.x; joy.by = p.y; joy.dx = 0; joy.dy = 0; joy.mag = 0;
@@ -271,11 +309,13 @@
             for (const t of e.changedTouches) {
                 if (t.identifier === joy.id) { joy.active = false; joy.id = null; joy.mag = 0; joy.dx = 0; joy.dy = 0; }
                 if (t.identifier === sprintBtn.id) { sprintHeld = false; sprintBtn.id = null; }
+                if (t.identifier === shootBtn.id) { shootBtn.id = null; releaseShoot(); }
             }
         }
         canvas.addEventListener('touchend', endTouch);
         canvas.addEventListener('touchcancel', endTouch);
-        canvas.addEventListener('mousedown', e => { initAudio(); const p = toLocal(e); if (inBtn(p, shootBtn)) shoot(); });
+        canvas.addEventListener('mousedown', e => { initAudio(); const p = toLocal(e); if (inBtn(p, shootBtn)) beginCharge(); else if (inBtn(p, shotBtn)) cycleShot(); });
+        canvas.addEventListener('mouseup', () => releaseShoot());
 
         function inputVector() {
             if (joy.active && joy.mag > 0.08) return { x: joy.dx, y: joy.dy, mag: joy.mag };
@@ -293,91 +333,126 @@
             return phase === 'play' && Math.hypot(player.x - ball.x, player.y - ball.y) < 46;
         }
 
-        function shoot() {
+        function canShoot() { return !paused && phase === 'play' && (mode === 'penalty' || hasBall()); }
+        function cycleShot() { shotType = SHOT_TYPES[(SHOT_TYPES.indexOf(shotType) + 1) % SHOT_TYPES.length]; }
+        function beginCharge() { if (!canShoot()) return; charging = true; power = 0.4; }
+        function releaseShoot() { if (!charging) return; charging = false; doShoot(power, null); power = 0; }
+
+        function doShoot(pw, aimOverride) {
             initAudio();
-            if (paused || phase !== 'play' || !hasBall()) return;
+            if (phase !== 'play') return;
             phase = 'shot';
             attempts++; attemptsEl.textContent = attempts;
             hint.style.opacity = '0';
+            const aimx = aimOverride != null ? aimOverride : inputVector().x;
 
-            const iv = inputVector();
-            const aimX = GOAL_CX + iv.x * 10;         // fast mittig – die Kurve macht die Platzierung
-            let dx = aimX - ball.x, dy = 0 - ball.y;
-            const d = Math.hypot(dx, dy) || 1;
-            const SPEED = 13;
-            ball.vx = dx / d * SPEED;
-            ball.vy = dy / d * SPEED;
-            ball.spin = iv.x * 0.6;                    // Effet -> gekrümmte Flugbahn (Hauptwaffe)
-            ball.trail = [];
+            ball.trail = []; ball.arc = 0; ball.high = false; ball.startY = ball.y;
+            let SPEED, aimBase;
+            if (shotType === 'power') { SPEED = 15 + pw * 6; aimBase = 54; ball.magnus = 0.02; ball.spin = aimx * 0.14; }
+            else if (shotType === 'lupfer') { SPEED = 10 + pw * 2.5; aimBase = 28; ball.magnus = 0.025; ball.spin = aimx * 0.25; ball.high = true; ball.lob = pw; }
+            else { SPEED = 11 + pw * 3.5; aimBase = 12; ball.magnus = 0.03; ball.spin = aimx * 0.62; }   // effet
 
-            // Torwart liest die GERADE Flugbahn und legt sich sehr genau fest
-            // -> gerade/mittige Schüsse hält er fast immer. Nur mit Effet (Kurve)
-            // oder aus spitzem Winkel zieht der Ball an ihm vorbei.
+            const penBoost = mode === 'penalty' ? 50 : 0;   // Elfmeter: direkte Platzierung zählt mehr
+            const aimX = Math.max(GOAL_L - 12, Math.min(GOAL_R + 12, GOAL_CX + aimx * (aimBase + penBoost)));
+            const dx = aimX - ball.x, dy = 0 - ball.y, d = Math.hypot(dx, dy) || 1;
+            ball.vx = dx / d * SPEED; ball.vy = dy / d * SPEED;
+
+            // Torwart liest die GERADE Bahn, legt sich fest (jetzt schwächer: größerer Lesefehler)
             const tHit = (ball.y - KEEPER_LINE) / (-ball.vy);
             const predX = ball.x + ball.vx * tHit;
-            const err = (((attempts * 2654435761) >>> 12) % 34) - 17;   // ±17 (stark)
-            keeper.dive = Math.max(GOAL_L - 10, Math.min(GOAL_R + 10, predX + err));
-            keeper.diving = true;
-            keeper.react = 6;   // Frames Reaktionszeit
+            const err = (((attempts * 2654435761) >>> 12) % (KERR * 2)) - KERR;
+            keeper.dive = Math.max(GOAL_L - 12, Math.min(GOAL_R + 12, predX + err));
+            keeper.diving = true; keeper.react = KREACT; keeper.dip = 0;
             sfx.kick();
         }
 
         // ===== Update =====
         function update() {
             if (paused) return;
+            if (charging) power = Math.min(1, power + 0.022);
             const iv = inputVector();
 
             if (phase === 'play') {
-                // Spieler mit Trägheit/Momentum (beschleunigt & gleitet)
-                const sprint = (sprintHeld || keys['shift']) ? 1.62 : 1;
-                const maxSp = 4.3 * sprint * iv.mag;
-                const tvx = iv.x * maxSp, tvy = iv.y * maxSp;
-                player.vx += (tvx - player.vx) * 0.16;
-                player.vy += (tvy - player.vy) * 0.16;
-                player.x += player.vx; player.y += player.vy;
-                const spd = Math.hypot(player.vx, player.vy);
-                if (spd > 0.35) { facing.x = player.vx / spd; facing.y = player.vy / spd; player.run += spd * 0.13; }
-                player.x = Math.max(24, Math.min(FW - 24, player.x));
-                player.y = Math.max(KEEPER_LINE + 20, Math.min(FH - 24, player.y));
+                if (mode === 'free') {
+                    // Spieler mit Trägheit/Momentum (beschleunigt & gleitet)
+                    const sprint = (sprintHeld || keys['shift']) ? 1.62 : 1;
+                    const maxSp = 4.3 * sprint * iv.mag;
+                    player.vx += (iv.x * maxSp - player.vx) * 0.16;
+                    player.vy += (iv.y * maxSp - player.vy) * 0.16;
+                    player.x += player.vx; player.y += player.vy;
+                    const spd = Math.hypot(player.vx, player.vy);
+                    if (spd > 0.35) { facing.x = player.vx / spd; facing.y = player.vy / spd; player.run += spd * 0.13; }
+                    player.x = Math.max(24, Math.min(FW - 24, player.x));
+                    player.y = Math.max(KEEPER_LINE + 40, Math.min(FH - 24, player.y));
 
-                // Dribbling mit losem Kontakt: bei Tempo wird der Ball weiter
-                // vorgelegt (schwerer zu kontrollieren). Ball hat eigene Reibung.
-                const DR = 22 + spd * 3.2;
-                const grip = spd > 6 ? 0.22 : 0.3;
-                ball.vx += ((player.x + facing.x * DR) - ball.x) * grip;
-                ball.vy += ((player.y + facing.y * DR) - ball.y) * grip;
-                ball.vx *= 0.55; ball.vy *= 0.55;   // Dämpfung -> weiches Führen
-                ball.x += ball.vx; ball.y += ball.vy;
-                ball.spinDraw += spd * 0.08 + 0.05;
+                    // Loses Dribbling
+                    const DR = 22 + spd * 3.2;
+                    const grip = spd > 6 ? 0.22 : 0.3;
+                    ball.vx += ((player.x + facing.x * DR) - ball.x) * grip;
+                    ball.vy += ((player.y + facing.y * DR) - ball.y) * grip;
+                    ball.vx *= 0.55; ball.vy *= 0.55;
+                    ball.x += ball.vx; ball.y += ball.vy;
+                    ball.spinDraw += spd * 0.08 + 0.05;
 
-                // Torwart hält aktiv die Winkel, spiegelt Ballposition gedämpft
-                const idle = GOAL_CX + Math.sin(player.run * 0.08 + attempts) * 40;
-                const target = Math.max(GOAL_L + 12, Math.min(GOAL_R - 12, ball.x * 0.34 + idle * 0.66));
+                    // Verteidiger jagen den Ballführenden; bei Kontakt Ballverlust
+                    for (const df of defenders) {
+                        const ddx = player.x - df.x, ddy = player.y - df.y, dl = Math.hypot(ddx, ddy) || 1;
+                        df.vx += (ddx / dl * 3.1 - df.vx) * 0.1; df.vy += (ddy / dl * 3.1 - df.vy) * 0.1;
+                        df.x += df.vx; df.y += df.vy;
+                        df.x = Math.max(20, Math.min(FW - 20, df.x)); df.y = Math.max(KEEPER_LINE + 20, Math.min(FH - 20, df.y));
+                        if (hasBall() && dl < 24) { resolve('BALL WEG!', '#ff6b6b', 'miss'); break; }
+                    }
+                } else {
+                    // Elfmeter: kein Laufen, Ball liegt auf dem Punkt – Joystick nur zum Zielen
+                    if (iv.mag > 0.15) { facing.x = iv.x; facing.y = -1; }
+                }
+
+                // Torwart hält die Winkel
+                const idle = GOAL_CX + Math.sin((player.run + attempts) * 0.08) * 46;
+                const target = Math.max(GOAL_L + 14, Math.min(GOAL_R - 14, ball.x * 0.3 + idle * 0.7));
                 keeper.x += (target - keeper.x) * 0.07;
-                keeper.lean *= 0.85;
+                keeper.lean *= 0.85; keeper.dip *= 0.9;
             } else if (phase === 'shot') {
-                // Ballflug: echter Effet (Magnus) -> Bananen-Flugbahn
-                ball.vx += ball.spin * 0.03; ball.spin *= 0.995;
+                ball.vx += ball.spin * ball.magnus; ball.spin *= 0.995;
                 ball.vy *= 0.997;
                 ball.x += ball.vx; ball.y += ball.vy;
                 ball.spinDraw += 0.42 + Math.abs(ball.vx) * 0.03;
-                ball.trail.push({ x: ball.x, y: ball.y });
+                if (ball.high) { const prog = 1 - Math.max(0, ball.y) / ball.startY; ball.arc = Math.sin(prog * Math.PI) * 70; }
+                ball.trail.push({ x: ball.x, y: ball.y, a: ball.arc });
                 if (ball.trail.length > 16) ball.trail.shift();
 
-                // Torwart hechtet zur festgelegten Ecke – begrenzt durch sein Tempo
+                // Torwart hechtet (Reaktionszeit + Tempolimit) mit Hecht-Pose
                 if (keeper.react > 0) { keeper.react--; }
                 else {
                     const dxk = keeper.dive - keeper.x;
-                    const step = Math.max(-KSPEED, Math.min(KSPEED, dxk));
-                    keeper.x += step;
+                    keeper.x += Math.max(-KSPEED, Math.min(KSPEED, dxk));
                     keeper.lean += (Math.sign(dxk) - keeper.lean) * 0.2;
+                    keeper.dip = Math.min(1, keeper.dip + 0.14);
                 }
 
-                if (ball.y <= 44 && ball.y > 0 && Math.abs(ball.x - keeper.x) < KREACH) resolve('GEHALTEN!', '#ff9800', 'save');
-                else if (ball.y <= 4) {
-                    if (ball.x > GOAL_L && ball.x < GOAL_R) resolve('TOR!', '#38e06a', 'goal');
-                    else resolve('VORBEI!', '#bbb', 'miss');
-                } else if (ball.x < -20 || ball.x > FW + 20) resolve('VORBEI!', '#bbb', 'miss');
+                // Verteidiger blocken flache Schüsse
+                if (!ball.high) {
+                    for (const df of defenders) {
+                        if (ball.y < df.y && Math.hypot(ball.x - df.x, ball.y - df.y) < 15) { resolve('GEBLOCKT!', '#bbb', 'miss'); break; }
+                    }
+                }
+                if (phase !== 'shot') { /* bereits aufgelöst */ }
+                else if (ball.high) {
+                    // Lupfer: über den Torwart; richtige Dosierung entscheidet
+                    if (ball.y <= 4) {
+                        const inside = ball.x > GOAL_L && ball.x < GOAL_R;
+                        if (!inside) resolve('VORBEI!', '#bbb', 'miss');
+                        else if (ball.lob < 0.5) resolve('GEHALTEN!', '#ff9800', 'save');
+                        else if (ball.lob > 0.87) resolve('DRÜBER!', '#bbb', 'miss');
+                        else resolve('TOR!', '#38e06a', 'goal');
+                    } else if (ball.x < -20 || ball.x > FW + 20) resolve('VORBEI!', '#bbb', 'miss');
+                } else {
+                    if (ball.y <= 44 && ball.y > 0 && Math.abs(ball.x - keeper.x) < KREACH) resolve('GEHALTEN!', '#ff9800', 'save');
+                    else if (ball.y <= 4) {
+                        if (ball.x > GOAL_L && ball.x < GOAL_R) resolve('TOR!', '#38e06a', 'goal');
+                        else resolve('VORBEI!', '#bbb', 'miss');
+                    } else if (ball.x < -20 || ball.x > FW + 20) resolve('VORBEI!', '#bbb', 'miss');
+                }
             }
 
             if (Math.random() > 0.9) flashes.push({ x: Math.random() * CW, life: 1 });
@@ -498,10 +573,11 @@
         }
 
         // 3D-schattierter Ball
-        function drawBallSprite(p, spin) {
+        function drawBallSprite(p, spin, lift) {
             const s = p.sc, R = 8.5 * s;
-            softShadow(p.sx + 3 * s, p.sy + 3 * s, 8 * s, 3.5 * s, 0.3);
-            const cx = p.sx, cy = p.sy - 5 * s;
+            lift = lift || 0;
+            softShadow(p.sx + 3 * s, p.sy + 3 * s, Math.max(3, 8 - lift * 0.04) * s, 3.5 * s, Math.max(0.12, 0.3 - lift * 0.003));
+            const cx = p.sx, cy = p.sy - 5 * s - lift * s;
             const g = ctx.createRadialGradient(cx - R * 0.35, cy - R * 0.4, R * 0.15, cx, cy, R);
             g.addColorStop(0, '#ffffff'); g.addColorStop(0.65, '#e8e8e8'); g.addColorStop(1, '#9aa0a4');
             ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill();
@@ -606,10 +682,10 @@
             // ===== Figuren (nach Tiefe sortiert) =====
             const drawKeeper = () => {
                 const p = project(keeper.x, KEEPER_LINE);
-                drawPerson(p.sx, p.sy, p.sc, {
+                drawPerson(p.sx, p.sy + keeper.dip * 5 * p.sc, p.sc, {
                     kit: kitOpp, skin: '#e8b98f', hair: '#241611',
-                    run: player.run * 0.25, moving: false,
-                    lean: keeper.lean, gloves: true, phaseShot: phase === 'shot', num: '1'
+                    run: 0, moving: false,
+                    lean: keeper.lean * 1.7, gloves: true, phaseShot: phase === 'shot', num: '1'
                 });
             };
             const drawPlayer = () => {
@@ -619,21 +695,22 @@
                 ctx.beginPath(); ctx.ellipse(p.sx, p.sy, 12 * s, 5 * s, 0, 0, 7); ctx.stroke();
                 drawPerson(p.sx, p.sy, s, {
                     kit: kitYou, skin: '#e8b98f', hair: '#3a2a1a',
-                    run: player.run, moving: spd > 0.4, lean: 0, num: '10'
+                    run: player.run, moving: mode === 'free' && spd > 0.4, lean: 0, num: '10'
                 });
             };
             const drawBall = () => {
                 if (phase === 'shot' && ball.trail) {
                     for (let i = 0; i < ball.trail.length; i++) {
-                        const tp = project(ball.trail[i].x, ball.trail[i].y);
+                        const tr = ball.trail[i], tp = project(tr.x, tr.y);
                         ctx.fillStyle = 'rgba(255,255,255,' + (i / ball.trail.length * 0.22) + ')';
-                        ctx.beginPath(); ctx.arc(tp.sx, tp.sy - 4 * tp.sc, 5 * tp.sc * (i / ball.trail.length + 0.3), 0, 7); ctx.fill();
+                        ctx.beginPath(); ctx.arc(tp.sx, tp.sy - 4 * tp.sc - (tr.a || 0) * tp.sc, 5 * tp.sc * (i / ball.trail.length + 0.3), 0, 7); ctx.fill();
                     }
                 }
-                drawBallSprite(project(ball.x, ball.y), ball.spinDraw);
+                drawBallSprite(project(ball.x, ball.y), ball.spinDraw, ball.arc || 0);
             };
-            [{ y: KEEPER_LINE, f: drawKeeper }, { y: player.y, f: drawPlayer }, { y: ball.y, f: drawBall }]
-                .sort((a, b) => a.y - b.y).forEach(i => i.f());
+            const items = [{ y: KEEPER_LINE, f: drawKeeper }, { y: player.y, f: drawPlayer }, { y: ball.y, f: drawBall }];
+            for (const df of defenders) items.push({ y: df.y, f: () => { const p = project(df.x, df.y); drawPerson(p.sx, p.sy, p.sc, { kit: kitOpp, skin: '#d9a978', hair: '#1a1a1a', run: 0, moving: false, lean: 0, num: df.num }); } });
+            items.sort((a, b) => a.y - b.y).forEach(i => i.f());
 
             // Vignette über die Szene (Controls kommen darüber)
             ctx.fillStyle = vignette; ctx.fillRect(0, 0, CW, CH);
@@ -642,21 +719,39 @@
         }
 
         function drawControls() {
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             if (joy.active) {
                 ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 3;
                 ctx.beginPath(); ctx.arc(joy.bx, joy.by, 70, 0, 7); ctx.stroke();
                 ctx.fillStyle = 'rgba(255,255,255,0.35)';
                 ctx.beginPath(); ctx.arc(joy.bx + joy.dx * joy.mag * 70, joy.by + joy.dy * joy.mag * 70, 28, 0, 7); ctx.fill();
             }
-            const canShoot = hasBall();
-            ctx.fillStyle = canShoot ? 'rgba(56,224,106,0.9)' : 'rgba(120,120,120,0.4)';
+            // Schuss-Button + Power-Ring
+            const cs = canShoot();
+            ctx.fillStyle = cs ? 'rgba(56,224,106,0.9)' : 'rgba(120,120,120,0.4)';
             ctx.beginPath(); ctx.arc(shootBtn.x, shootBtn.y, shootBtn.r, 0, 7); ctx.fill();
-            ctx.fillStyle = '#06110b'; ctx.font = 'bold 18px Segoe UI, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            if (charging) {
+                ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+                ctx.beginPath(); ctx.arc(shootBtn.x, shootBtn.y, shootBtn.r + 7, -Math.PI / 2, -Math.PI / 2 + power * 2 * Math.PI); ctx.stroke();
+                ctx.lineCap = 'butt';
+            }
+            ctx.fillStyle = '#06110b'; ctx.font = 'bold 17px Segoe UI, sans-serif';
             ctx.fillText('SCHUSS', shootBtn.x, shootBtn.y);
-            ctx.fillStyle = sprintHeld ? 'rgba(0,180,219,0.9)' : 'rgba(255,255,255,0.18)';
-            ctx.beginPath(); ctx.arc(sprintBtn.x, sprintBtn.y, sprintBtn.r, 0, 7); ctx.fill();
-            ctx.fillStyle = '#fff'; ctx.font = 'bold 14px Segoe UI, sans-serif';
-            ctx.fillText('SPRINT', sprintBtn.x, sprintBtn.y);
+            // Sprint (nur Freies Spiel)
+            if (mode === 'free') {
+                ctx.fillStyle = sprintHeld ? 'rgba(0,180,219,0.9)' : 'rgba(255,255,255,0.18)';
+                ctx.beginPath(); ctx.arc(sprintBtn.x, sprintBtn.y, sprintBtn.r, 0, 7); ctx.fill();
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 13px Segoe UI, sans-serif';
+                ctx.fillText('SPRINT', sprintBtn.x, sprintBtn.y);
+            }
+            // Schussart-Umschalter
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(shotBtn.x, shotBtn.y, shotBtn.r, 0, 7); ctx.fill(); ctx.stroke();
+            const lbl = SHOT_LABEL[shotType].split(' ');
+            ctx.fillStyle = '#fff'; ctx.font = '19px Segoe UI, sans-serif';
+            ctx.fillText(lbl[0], shotBtn.x, shotBtn.y - 7);
+            ctx.font = 'bold 10px Segoe UI, sans-serif';
+            ctx.fillText(lbl[1], shotBtn.x, shotBtn.y + 12);
             ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
         }
 
@@ -665,8 +760,12 @@
             const gy = document.getElementById('grid-you'), go = document.getElementById('grid-opp');
             const overlay = document.getElementById('teamSelect');
             const flagYou = document.getElementById('flagYou'), flagOpp = document.getElementById('flagOpp');
-            let selYou = 'ARG', selOpp = 'ESP';
-            try { selYou = localStorage.getItem('ss_you') || 'ARG'; selOpp = localStorage.getItem('ss_opp') || 'ESP'; } catch (e) {}
+            const rowMode = document.getElementById('row-mode'), rowDef = document.getElementById('row-def');
+            let selYou = 'ARG', selOpp = 'ESP', selMode = 'free', selDef = 0;
+            try {
+                selYou = localStorage.getItem('ss_you') || 'ARG'; selOpp = localStorage.getItem('ss_opp') || 'ESP';
+                selMode = localStorage.getItem('ss_mode') || 'free'; selDef = parseInt(localStorage.getItem('ss_def') || '0', 10) || 0;
+            } catch (e) {}
             if (!TEAMS[selYou]) selYou = 'ARG';
             if (!TEAMS[selOpp]) selOpp = 'ESP';
             function render() {
@@ -682,14 +781,34 @@
                         grid.appendChild(b);
                     });
                 });
+                rowMode.innerHTML = '';
+                [['free', 'Freies Spiel'], ['penalty', 'Elfmeter']].forEach(function (m) {
+                    const b = document.createElement('button'); b.type = 'button';
+                    b.className = 'ts-opt' + (selMode === m[0] ? ' sel' : '');
+                    b.textContent = m[1]; b.onclick = function () { selMode = m[0]; render(); };
+                    rowMode.appendChild(b);
+                });
+                rowDef.innerHTML = '';
+                [0, 1, 2].forEach(function (n) {
+                    const b = document.createElement('button'); b.type = 'button';
+                    b.className = 'ts-opt' + (selDef === n ? ' sel' : '') + (selMode !== 'free' ? ' dis' : '');
+                    b.textContent = n; b.onclick = function () { if (selMode === 'free') { selDef = n; render(); } };
+                    rowDef.appendChild(b);
+                });
                 flagYou.textContent = TEAMS[selYou].flag;
                 flagOpp.textContent = TEAMS[selOpp].flag;
             }
-            function apply() { kitYou = TEAMS[selYou].kit; kitOpp = TEAMS[selOpp].kit; }
+            function apply() {
+                kitYou = TEAMS[selYou].kit; kitOpp = TEAMS[selOpp].kit;
+                mode = selMode; defCount = selMode === 'free' ? selDef : 0;
+            }
             apply(); render();
             document.getElementById('ts-play').onclick = function () {
                 apply();
-                try { localStorage.setItem('ss_you', selYou); localStorage.setItem('ss_opp', selOpp); } catch (e) {}
+                try {
+                    localStorage.setItem('ss_you', selYou); localStorage.setItem('ss_opp', selOpp);
+                    localStorage.setItem('ss_mode', selMode); localStorage.setItem('ss_def', String(selDef));
+                } catch (e) {}
                 overlay.style.display = 'none'; paused = false; reset(); initAudio();
             };
             document.getElementById('reopen').onclick = function () { paused = true; overlay.style.display = 'flex'; };
@@ -699,7 +818,12 @@
         requestAnimationFrame(loop);
 
         // Debug-Hook fürs automatisierte Testen
-        window.__game = { shoot: shoot, state: () => ({ phase: phase, score: score, attempts: attempts, ball: { x: ball.x, y: ball.y } }) };
+        window.__game = {
+            state: () => ({ phase: phase, score: score, attempts: attempts, shotType: shotType, mode: mode, defCount: defCount, ball: { x: ball.x, y: ball.y } }),
+            fire: (type, pw, aim) => { if (canShoot()) { shotType = type || shotType; doShoot(pw == null ? 0.7 : pw, aim == null ? 0 : aim); return true; } return false; },
+            cycle: cycleShot,
+            config: (m, d) => { mode = m; defCount = d || 0; paused = false; reset(); }
+        };
     })();
     </script>
 </body>
