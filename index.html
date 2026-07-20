@@ -286,9 +286,12 @@
             round: 0, scoreHost: 0, scoreGuest: 0, sd: false, over: false, winner: '',
             role: '', shooterIsHost: true, oPhase: 'idle', keeperX: GOAL_CX, lastOutcome: ''
         };
-        let transport = null;                 // { send(obj) } – PeerJS oder Test-Loopback
+        let transport = null;                 // { send(obj) } – PartyKit-WS, PeerJS oder Test-Loopback
         function netSend(o) { if (transport) transport.send(o); }
         const GOAL_HALF = (GOAL_R - GOAL_L) / 2;
+        // Nach PartyKit-Deploy hier den Host eintragen (ohne https://), z.B.
+        // 'fritzgame-relay.DEINNUTZER.partykit.dev'. Leer => Fallback auf P2P (gleiches WLAN).
+        const PARTY_HOST = '';
 
         // ===== vorberechnete Ränge =====
         const crowd = [];
@@ -979,7 +982,7 @@
         })();
 
         // ===================== ONLINE-MULTIPLAYER =====================
-        let peer = null, conn = null;
+        let peer = null, conn = null, wsRef = null;
 
         // ---- Rundenlogik (rundenbasiertes Elfmeterschießen) ----
         function setupRound(shooterIsHost) {
@@ -1088,7 +1091,9 @@
             online.active = false; online.connected = false;
             try { netSend({ t: 'bye' }); } catch (e) {}
             try { if (peer) peer.destroy(); } catch (e) {}
-            peer = null; conn = null; transport = null;
+            try { if (wsRef) wsRef.close(); } catch (e) {}
+            clearConnTimer();
+            peer = null; conn = null; wsRef = null; transport = null;
             hideEnd();
             el('ui-layer').style.display = ''; el('hint').style.display = ''; el('reopen').style.display = '';
             paused = true; mode = 'penalty';
@@ -1150,20 +1155,48 @@
                 if (!online.active) setStatus('⏳ Keine direkte Verbindung (NAT/Firewall). Tipp: beide ins selbe WLAN.');
             }, 20000);
         }
+        // ---- PartyKit-Transport (Server-Relay über WebSocket – überall zuverlässig) ----
+        function connectParty(room, myTeam) {
+            setStatus('Verbinde mit Server…');
+            let ws;
+            try { ws = new WebSocket('wss://' + PARTY_HOST + '/parties/main/' + room.toUpperCase()); }
+            catch (e) { setStatus('Server-URL ungültig.'); return; }
+            wsRef = ws;
+            ws.onopen = function () { setStatus('Warte auf Rolle…'); };
+            ws.onmessage = function (ev) {
+                let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+                if (m.t === 'role') {
+                    if (m.full) { setStatus('Raum ist voll.'); try { ws.close(); } catch (e) {} return; }
+                    clearConnTimer();
+                    const t = { send: function (o) { try { ws.send(JSON.stringify(o)); } catch (e) {} } };
+                    setStatus('Verbunden!');
+                    beginOnline(!!m.isHost, myTeam, t);
+                } else { handleMsg(m); }
+            };
+            ws.onclose = function () { if (online.active) onlineLeave('Verbindung getrennt.'); else setStatus('Verbindung geschlossen.'); };
+            ws.onerror = function () { setStatus('Server-Fehler – deployed & URL korrekt?'); };
+            armTimeout();
+        }
+
         function hostRoom(myTeam) {
-            if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
             const code = genCode();
-            setStatus('Raum wird erstellt…');
+            el('mp-codebox').style.display = 'block'; el('mp-codebox').textContent = code;
+            if (PARTY_HOST) { connectParty(code, myTeam); return; }
+            // Fallback: P2P (PeerJS) – zuverlässig nur im selben WLAN
+            if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
+            setStatus('Warte auf Gegner – Code teilen! (P2P)');
             peer = new Peer('sskick-' + code, peerConfig());
-            peer.on('open', function () { const b = el('mp-codebox'); b.style.display = 'block'; b.textContent = code; setStatus('Warte auf Gegner – Code teilen!'); });
+            peer.on('open', function () { setStatus('Warte auf Gegner – Code teilen! (P2P)'); });
             peer.on('connection', function (c) { conn = c; setStatus('Gegner verbindet… (ICE)'); wireConn(true, myTeam); armTimeout(); });
             peer.on('disconnected', function () { setStatus('Broker getrennt – neu laden.'); });
             peer.on('error', function (e) { setStatus('Fehler: ' + (e && e.type ? e.type : '?')); });
         }
         function joinRoom(code, myTeam) {
-            if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
+            code = (code || '').trim();
             if (!code || code.length < 4) { setStatus('Bitte 4-stelligen Code eingeben.'); return; }
-            setStatus('Verbinde…');
+            if (PARTY_HOST) { connectParty(code, myTeam); return; }
+            if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
+            setStatus('Verbinde… (P2P)');
             peer = new Peer(null, peerConfig());
             peer.on('open', function () { conn = peer.connect('sskick-' + code.toUpperCase(), { reliable: true }); wireConn(false, myTeam); armTimeout(); });
             peer.on('error', function (e) {

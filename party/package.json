@@ -1,0 +1,13 @@
+{
+  "name": "fritzgame-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PartyKit relay server for Street Striker online 1v1",
+  "scripts": {
+    "dev": "partykit dev",
+    "deploy": "partykit deploy"
+  },
+  "devDependencies": {
+    "partykit": "^0.0.111"
+  }
+}
