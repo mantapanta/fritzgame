@@ -16,6 +16,7 @@ export function getGeminiKey(): string {
   return (process.env.GEMINI_API_KEY || "")
     .trim()
     .replace(/^['"]+|['"]+$/g, "")
+    .replace(/\s+/g, "") // API-Keys enthalten nie Whitespace (z.B. Zeilenumbruch beim Kopieren)
     .trim();
 }
 
