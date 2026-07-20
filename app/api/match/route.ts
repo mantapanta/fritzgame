@@ -1,17 +1,33 @@
 import { NextResponse } from "next/server";
-import { getCollection } from "@/lib/store";
+import { auth } from "@/auth";
+import { getCollection, getUserCollectionId } from "@/lib/store";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 /**
- * Tausch-Abgleich zweier Sammlungen.
+ * Tausch-Abgleich zwischen der eigenen (eingeloggten) Sammlung und der per Link
+ * angegebenen Sammlung des Gegenübers.
  *   iGive = meine Doppel ∩ deren fehlende  (ich gebe ab)
  *   iGet  = deren Doppel ∩ meine fehlende  (ich bekomme)
  */
 export async function GET(req: Request) {
+  const session = await auth();
+  const userId = session?.user?.id;
+  if (!userId) {
+    return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
+  }
+
   const { searchParams } = new URL(req.url);
-  const mineId = searchParams.get("mine") || "";
   const theirsId = searchParams.get("theirs") || "";
+
+  const mineId = await getUserCollectionId(userId);
+  if (!mineId) {
+    return NextResponse.json(
+      { error: "Du hast noch keine eigene Sammlung erfasst." },
+      { status: 409 }
+    );
+  }
 
   const [mine, theirs] = await Promise.all([
     getCollection(mineId),
@@ -28,6 +44,12 @@ export async function GET(req: Request) {
     return NextResponse.json(
       { error: "Eigene Sammlung nicht gefunden." },
       { status: 404 }
+    );
+  }
+  if (theirs.id === mine.id) {
+    return NextResponse.json(
+      { error: "Das ist deine eigene Sammlung." },
+      { status: 400 }
     );
   }
 

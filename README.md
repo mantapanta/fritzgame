@@ -34,6 +34,8 @@ korrekt über die real vom Album gelesenen Codes läuft.
 - **Next.js 14 (App Router)**, deploybar auf **Vercel**
 - **Google Gemini** für die Bilderkennung (`lib/gemini.ts`)
 - **Upstash Redis** als Speicher; lokal ohne Redis automatischer In-Memory-Fallback
+- **Login** via Auth.js (NextAuth v5) – E-Mail Magic-Link über Resend; Sammlung ans
+  Konto gebunden (geräteübergreifend, aktualisierbar). Nutzer↔Sammlung liegt im Redis.
 - Album (WC 2026) fest verdrahtet in `lib/album.ts` (Specials + 48 Teams mit FIFA-Codes)
 
 ## Lokal starten
@@ -55,6 +57,9 @@ Foto-Erkennung liefert eine Fehlermeldung.
 | `GEMINI_MODEL`                    | optional, Default `gemini-2.0-flash`                        |
 | `KV_REST_API_URL` / `..._TOKEN`   | Upstash Redis (Vercel-Integration); alternativ `UPSTASH_*`  |
 | `UPSTASH_REDIS_REST_URL`/`_TOKEN` | Upstash Redis (native Namen); alternativ zu `KV_*`          |
+| `AUTH_SECRET`                     | Pflicht für Login (z.B. `openssl rand -base64 32`)          |
+| `AUTH_RESEND_KEY`                 | Resend API-Key für den Versand der Login-Links              |
+| `AUTH_EMAIL_FROM`                 | Absenderadresse (Default `onboarding@resend.dev`)           |
 | `NEXT_PUBLIC_BASE_URL`            | optional, Basis-URL für Share-Links                         |
 
 ## Deploy auf Vercel

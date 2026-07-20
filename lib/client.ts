@@ -1,23 +1,9 @@
 "use client";
 
 // Client-seitige Hilfsfunktionen (Browser).
+// Identität/Besitz kommt jetzt aus der Login-Session (nicht mehr aus localStorage).
 
-const MY_ID_KEY = "fritzswap.myId";
 const MISSING_KEY = "fritzswap.captureMissing";
-
-export function saveMyId(id: string) {
-  try {
-    localStorage.setItem(MY_ID_KEY, id);
-  } catch {}
-}
-
-export function getMyId(): string | null {
-  try {
-    return localStorage.getItem(MY_ID_KEY);
-  } catch {
-    return null;
-  }
-}
 
 export function setCaptureMissing(codes: string[]) {
   try {
@@ -48,7 +34,6 @@ export function parseCollectionId(input: string): string | null {
   if (urlMatch) return urlMatch[1];
   const theirsMatch = /[?&]theirs=([a-z0-9]+)/i.exec(s);
   if (theirsMatch) return theirsMatch[1];
-  // Reiner ID-String?
   if (/^[a-z0-9]{6,20}$/i.test(s)) return s;
   return null;
 }

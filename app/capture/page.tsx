@@ -2,216 +2,221 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useSession } from "next-auth/react";
+import { useCallback, useRef, useState } from "react";
 import CameraCapture, { type Quality } from "@/components/CameraCapture";
-import { ALBUM, codeSort } from "@/lib/album";
+import { ALBUM, TEAMS, codeSort } from "@/lib/album";
 import { setCaptureMissing } from "@/lib/client";
 
-type Phase = "capture" | "processing" | "done";
+type Status = "pending" | "ok" | "empty" | "failed";
+
+type Shot = {
+  id: number;
+  dataUrl: string;
+  status: Status;
+  missing: string[];
+  teams: string[];
+  label: string;
+};
+
+const labelForTeams = (codes: string[]) =>
+  codes
+    .map((c) => TEAMS.find((t) => t.code === c)?.label || c)
+    .join(", ");
 
 export default function CapturePage() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>("capture");
-  const [photos, setPhotos] = useState<string[]>([]);
-  const [progress, setProgress] = useState(0);
-  const [missing, setMissing] = useState<string[]>([]);
-  const [seenTeams, setSeenTeams] = useState<string[]>([]);
-  const [failed, setFailed] = useState(0);
-  const [note, setNote] = useState<string | null>(null);
+  const { status: authStatus } = useSession();
+  const [shots, setShots] = useState<Shot[]>([]);
+  const nextId = useRef(1);
 
-  function handleCapture(dataUrl: string, quality: Quality) {
-    setPhotos((p) => [...p, dataUrl]);
-    setNote(
-      quality.ok
-        ? null
-        : (quality.reason || "Bildqualität könnte besser sein") +
-            " – Foto wurde trotzdem hinzugefügt."
-    );
-  }
+  const analyze = useCallback(async (id: number, dataUrl: string) => {
+    try {
+      const res = await fetch("/api/recognize/page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: [dataUrl] }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Erkennung fehlgeschlagen.");
 
-  function removePhoto(idx: number) {
-    setPhotos((p) => p.filter((_, i) => i !== idx));
-  }
+      const missing: string[] = data.missing || [];
+      const teams: string[] = data.seenTeams || [];
+      const recognizedSomething = teams.length > 0 || missing.length > 0;
 
-  async function evaluate() {
-    setPhase("processing");
-    setProgress(0);
-    setFailed(0);
-    const foundMissing = new Set<string>();
-    const foundTeams = new Set<string>();
-    let fails = 0;
-
-    for (let i = 0; i < photos.length; i++) {
-      setProgress(i + 1);
-      try {
-        const res = await fetch("/api/recognize/page", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ images: [photos[i]] }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Erkennung fehlgeschlagen.");
-        (data.missing || []).forEach((c: string) => foundMissing.add(c));
-        (data.seenTeams || []).forEach((c: string) => foundTeams.add(c));
-      } catch {
-        fails++;
-      }
-      setMissing(Array.from(foundMissing).sort(codeSort));
-      setSeenTeams(Array.from(foundTeams));
+      setShots((prev) =>
+        prev.map((s) =>
+          s.id === id
+            ? {
+                ...s,
+                status: recognizedSomething ? "ok" : "empty",
+                missing,
+                teams,
+                label: recognizedSomething
+                  ? `${teams.length ? labelForTeams(teams) : "Spezialseite"} · ${missing.length} leer`
+                  : "Nichts erkannt – neu aufnehmen",
+              }
+            : s
+        )
+      );
+    } catch (e: any) {
+      setShots((prev) =>
+        prev.map((s) =>
+          s.id === id
+            ? { ...s, status: "failed", label: "Fehlgeschlagen – neu aufnehmen" }
+            : s
+        )
+      );
     }
+  }, []);
 
-    setFailed(fails);
-    setPhase("done");
+  function handleCapture(dataUrl: string, _quality: Quality) {
+    const id = nextId.current++;
+    setShots((prev) => [
+      ...prev,
+      { id, dataUrl, status: "pending", missing: [], teams: [], label: "wird geprüft …" },
+    ]);
+    // Direkt im Hintergrund analysieren – Nutzer kann weiter fotografieren.
+    analyze(id, dataUrl);
   }
+
+  function removeShot(id: number) {
+    setShots((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  function retakeShot(id: number) {
+    // Foto entfernen; der Nutzer nimmt es einfach neu auf.
+    removeShot(id);
+  }
+
+  const pending = shots.filter((s) => s.status === "pending").length;
+  const problems = shots.filter((s) => s.status === "failed" || s.status === "empty");
+  const okShots = shots.filter((s) => s.status === "ok");
+
+  const allMissing = Array.from(
+    new Set(okShots.flatMap((s) => s.missing))
+  ).sort(codeSort);
+  const seenTeams = Array.from(new Set(okShots.flatMap((s) => s.teams)));
 
   function finish() {
-    setCaptureMissing(missing);
+    setCaptureMissing(allMissing);
     router.push("/spares");
   }
 
-  const teamsProgress = Math.round((seenTeams.length / ALBUM.teamCount) * 100);
+  // ---- Login-Gate ----
+  if (authStatus === "loading") {
+    return (
+      <div className="card center" style={{ marginTop: 40 }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
+  if (authStatus !== "authenticated") {
+    return (
+      <div className="stack">
+        <header className="topbar">
+          <Link href="/" className="back-link">← Start</Link>
+          <span className="pill">Sticker erfassen</span>
+        </header>
+        <div className="toast warn">Bitte melde dich zuerst an.</div>
+        <Link href="/login?callbackUrl=/capture" className="btn btn-primary">
+          Anmelden
+        </Link>
+      </div>
+    );
+  }
+
+  const badge = (s: Shot) => {
+    if (s.status === "pending") return <span className="badge b-pending">⏳</span>;
+    if (s.status === "ok") return <span className="badge b-ok">✓</span>;
+    return <span className="badge b-warn">!</span>;
+  };
 
   return (
     <div className="stack">
       <header className="topbar">
-        <Link href="/" className="back-link">
-          ← Abbrechen
-        </Link>
-        <span className="pill">Album scannen</span>
+        <Link href="/" className="back-link">← Abbrechen</Link>
+        <span className="pill">Sticker erfassen</span>
       </header>
 
-      {/* -------- CAPTURE PHASE -------- */}
-      {phase === "capture" && (
-        <>
-          <div className="center">
-            <h2 style={{ margin: 0 }}>Seiten mit Lücken fotografieren</h2>
-            <p className="muted" style={{ margin: "4px 0 0" }}>
-              Fotografiere <b>nur die Seiten, auf denen dir noch Sticker
-              fehlen</b> – die vollen Seiten kannst du überspringen. Reihenfolge
-              egal. Erst alle Fotos sammeln, dann in einem Rutsch auswerten.
-            </p>
-          </div>
+      <div className="center">
+        <h2 style={{ margin: 0 }}>Seiten mit Lücken fotografieren</h2>
+        <p className="muted" style={{ margin: "4px 0 0" }}>
+          Fotografiere <b>nur Seiten, auf denen dir Sticker fehlen</b>. Jedes Foto
+          wird sofort geprüft – du siehst gleich, ob es passt.
+        </p>
+      </div>
 
-          {note && <div className="toast warn">{note}</div>}
+      <div className="stats-row">
+        <div className="stat"><b>{shots.length}</b><span>Fotos</span></div>
+        <div className="stat"><b>{seenTeams.length}/{ALBUM.teamCount}</b><span>Teams</span></div>
+        <div className="stat"><b style={{ color: "var(--need)" }}>{allMissing.length}</b><span>fehlend</span></div>
+      </div>
 
-          <CameraCapture
-            onCapture={handleCapture}
-            shutterLabel={photos.length ? "Weitere Seite aufnehmen" : "Seite aufnehmen"}
-          />
+      <CameraCapture
+        onCapture={handleCapture}
+        shutterLabel={shots.length ? "Nächste Seite aufnehmen" : "Seite aufnehmen"}
+      />
 
-          {photos.length > 0 && (
-            <>
-              <div className="card">
-                <div style={{ fontWeight: 700, marginBottom: 10 }}>
-                  {photos.length} Foto{photos.length === 1 ? "" : "s"} gesammelt
-                  <span className="muted" style={{ fontWeight: 400 }}>
-                    {" "}
-                    · zum Entfernen antippen
-                  </span>
-                </div>
-                <div className="thumbs">
-                  {photos.map((src, i) => (
-                    <button
-                      key={i}
-                      className="thumb"
-                      onClick={() => removePhoto(i)}
-                      aria-label="Foto entfernen"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={src} alt={`Foto ${i + 1}`} />
-                      <span className="thumb-x">×</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <button className="btn btn-success" onClick={evaluate}>
-                Auswerten ({photos.length} Foto{photos.length === 1 ? "" : "s"})
-              </button>
-            </>
-          )}
-        </>
+      {problems.length > 0 && (
+        <div className="toast warn">
+          {problems.length} Foto{problems.length === 1 ? "" : "s"} sind nicht
+          verwertbar (unten mit „!" markiert). Nimm genau diese neu auf, solange
+          die Seiten noch offen sind.
+        </div>
       )}
 
-      {/* -------- PROCESSING PHASE -------- */}
-      {phase === "processing" && (
-        <div className="stack">
-          <div className="center">
-            <h2 style={{ margin: 0 }}>Fotos werden ausgewertet …</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              Du musst nicht warten – bleib einfach hier.
-            </p>
+      {shots.length > 0 && (
+        <div className="card">
+          <div style={{ fontWeight: 700, marginBottom: 10 }}>
+            Aufnahmen{pending ? ` · ${pending} werden geprüft …` : ""}
           </div>
-          <div className="progress">
-            <span
-              style={{
-                width: `${Math.round((progress / Math.max(photos.length, 1)) * 100)}%`,
-              }}
-            />
-          </div>
-          <div className="card center stack" style={{ alignItems: "center" }}>
-            <div className="spinner" />
-            <div className="muted">
-              Bild {progress} von {photos.length}
-            </div>
+          <div className="shotlist">
+            {shots.map((s) => (
+              <div key={s.id} className={`shot ${s.status}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.dataUrl} alt="" />
+                <div className="shot-info">
+                  {badge(s)}
+                  <span className="shot-label">{s.label}</span>
+                </div>
+                <button
+                  className="shot-action"
+                  onClick={() =>
+                    s.status === "ok" ? removeShot(s.id) : retakeShot(s.id)
+                  }
+                >
+                  {s.status === "ok" ? "Entfernen" : "Neu aufnehmen"}
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* -------- DONE PHASE -------- */}
-      {phase === "done" && (
-        <div className="stack">
-          <div className="center">
-            <h2 style={{ margin: 0 }}>Fertig ausgewertet ✓</h2>
+      {allMissing.length > 0 && (
+        <details className="card">
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+            Bisher fehlend ({allMissing.length})
+          </summary>
+          <div className="grid-numbers" style={{ marginTop: 12 }}>
+            {allMissing.map((c) => (
+              <span key={c} className="chip get">{c}</span>
+            ))}
           </div>
-          <div className="card">
-            <div className="stats-row">
-              <div className="stat">
-                <b>{photos.length}</b>
-                <span>Fotos</span>
-              </div>
-              <div className="stat">
-                <b>
-                  {seenTeams.length}/{ALBUM.teamCount}
-                </b>
-                <span>Teams erkannt</span>
-              </div>
-              <div className="stat">
-                <b style={{ color: "var(--need)" }}>{missing.length}</b>
-                <span>fehlend</span>
-              </div>
-            </div>
-          </div>
+        </details>
+      )}
 
-          {failed > 0 && (
-            <div className="toast warn">
-              {failed} Foto{failed === 1 ? "" : "s"} konnten nicht ausgewertet
-              werden (z.B. unscharf). Du kannst sie neu aufnehmen.
-            </div>
-          )}
-
-          {missing.length > 0 && (
-            <details className="card" open>
-              <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-                Fehlende Sticker ({missing.length})
-              </summary>
-              <div className="grid-numbers" style={{ marginTop: 12 }}>
-                {missing.map((c) => (
-                  <span key={c} className="chip get">
-                    {c}
-                  </span>
-                ))}
-              </div>
-            </details>
-          )}
-
-          <button className="btn" onClick={() => setPhase("capture")}>
-            + Weitere Seiten scannen
-          </button>
-          <button className="btn btn-success" onClick={finish}>
-            Weiter zu den Doppelten →
-          </button>
-        </div>
+      {okShots.length > 0 && (
+        <button
+          className="btn btn-success"
+          onClick={finish}
+          disabled={pending > 0}
+        >
+          {pending > 0
+            ? `Warte auf Prüfung (${pending}) …`
+            : "Weiter zu den Doppelten →"}
+        </button>
       )}
     </div>
   );

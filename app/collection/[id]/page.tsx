@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ALBUM } from "@/lib/album";
-import { getMyId } from "@/lib/client";
 import type { Collection } from "@/lib/store";
 
 export default function CollectionPage() {
@@ -18,8 +17,11 @@ export default function CollectionPage() {
   const [shareUrl, setShareUrl] = useState("");
 
   useEffect(() => {
-    setMyId(getMyId());
     setShareUrl(`${window.location.origin}/collection/${id}`);
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((d) => setMyId(d?.collectionId ?? null))
+      .catch(() => {});
     (async () => {
       try {
         const res = await fetch(`/api/collections/${id}`);

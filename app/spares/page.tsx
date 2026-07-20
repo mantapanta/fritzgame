@@ -5,11 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import CameraCapture, { type Quality } from "@/components/CameraCapture";
 import { codeSort } from "@/lib/album";
-import {
-  clearCaptureMissing,
-  getCaptureMissing,
-  saveMyId,
-} from "@/lib/client";
+import { clearCaptureMissing, getCaptureMissing } from "@/lib/client";
 
 type Phase = "camera" | "recognizing" | "idle" | "saving";
 
@@ -71,7 +67,6 @@ export default function SparesPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Speichern fehlgeschlagen.");
-      saveMyId(data.id);
       clearCaptureMissing();
       router.push(`/collection/${data.id}`);
     } catch (e: any) {

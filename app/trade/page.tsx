@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { getMyId, parseCollectionId } from "@/lib/client";
+import { parseCollectionId } from "@/lib/client";
 
 type MatchResult = {
   iGive: string[];
@@ -13,73 +14,100 @@ type MatchResult = {
 
 function TradeInner() {
   const searchParams = useSearchParams();
-  const [myId, setMyId] = useState<string | null>(null);
+  const { status: authStatus } = useSession();
+  const [myCollectionId, setMyCollectionId] = useState<string | null>(null);
+  const [meLoaded, setMeLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [match, setMatch] = useState<MatchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const runMatch = useCallback(
-    async (mine: string, theirs: string) => {
-      setLoading(true);
-      setError(null);
-      setMatch(null);
-      try {
-        const res = await fetch(
-          `/api/match?mine=${encodeURIComponent(mine)}&theirs=${encodeURIComponent(
-            theirs
-          )}`
-        );
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Abgleich fehlgeschlagen.");
-        setMatch(data);
-      } catch (e: any) {
-        setError(e?.message || "Abgleich fehlgeschlagen.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+  const runMatch = useCallback(async (theirs: string) => {
+    setLoading(true);
+    setError(null);
+    setMatch(null);
+    try {
+      const res = await fetch(
+        `/api/match?theirs=${encodeURIComponent(theirs)}`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Abgleich fehlgeschlagen.");
+      setMatch(data);
+    } catch (e: any) {
+      setError(e?.message || "Abgleich fehlgeschlagen.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const mine = getMyId();
-    setMyId(mine);
-    const theirs = searchParams.get("theirs");
-    if (mine && theirs) {
-      setInput(theirs);
-      runMatch(mine, theirs);
+    if (authStatus !== "authenticated") {
+      if (authStatus === "unauthenticated") setMeLoaded(true);
+      return;
     }
-  }, [searchParams, runMatch]);
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((d) => setMyCollectionId(d?.collectionId ?? null))
+      .catch(() => {})
+      .finally(() => setMeLoaded(true));
+  }, [authStatus]);
+
+  useEffect(() => {
+    const theirs = searchParams.get("theirs");
+    if (authStatus === "authenticated" && myCollectionId && theirs) {
+      setInput(theirs);
+      runMatch(theirs);
+    }
+  }, [searchParams, runMatch, authStatus, myCollectionId]);
 
   function submit() {
-    if (!myId) return;
     const theirs = parseCollectionId(input);
     if (!theirs) {
       setError("Konnte keinen gültigen Link / keine ID erkennen.");
       return;
     }
-    if (theirs === myId) {
+    if (theirs === myCollectionId) {
       setError("Das ist deine eigene Sammlung 🙂");
       return;
     }
-    runMatch(myId, theirs);
+    runMatch(theirs);
   }
 
-  if (!myId) {
+  if (authStatus === "loading" || !meLoaded) {
+    return (
+      <div className="card center" style={{ marginTop: 40 }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  if (authStatus !== "authenticated") {
     return (
       <div className="stack">
         <header className="topbar">
-          <Link href="/" className="back-link">
-            ← Start
-          </Link>
+          <Link href="/" className="back-link">← Start</Link>
+          <span className="pill">Tauschen</span>
+        </header>
+        <div className="toast warn">Bitte melde dich zuerst an.</div>
+        <Link href="/login?callbackUrl=/trade" className="btn btn-primary">
+          Anmelden
+        </Link>
+      </div>
+    );
+  }
+
+  if (!myCollectionId) {
+    return (
+      <div className="stack">
+        <header className="topbar">
+          <Link href="/" className="back-link">← Start</Link>
           <span className="pill">Tauschen</span>
         </header>
         <div className="toast warn">
           Du brauchst zuerst eine eigene Sammlung, um vergleichen zu können.
         </div>
         <Link href="/capture" className="btn btn-primary">
-          📷 Album jetzt erfassen
+          📷 Sticker jetzt erfassen
         </Link>
       </div>
     );

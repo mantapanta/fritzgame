@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { ALBUM, codeSort, isValidCode, normalizeCode } from "@/lib/album";
-import { saveCollection } from "@/lib/store";
+import { upsertUserCollection } from "@/lib/store";
 
 export const runtime = "nodejs";
 
@@ -14,19 +15,29 @@ function cleanCodes(input: unknown): string[] {
 
 export async function POST(req: Request) {
   try {
+    const session = await auth();
+    const userId = session?.user?.id;
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Nicht angemeldet." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json();
     const missing = cleanCodes(body?.missing);
     const doubles = cleanCodes(body?.doubles);
     const owner =
-      typeof body?.owner === "string" && body.owner.trim()
-        ? String(body.owner).trim().slice(0, 40)
-        : undefined;
+      (typeof body?.owner === "string" && body.owner.trim()) ||
+      session.user?.name ||
+      session.user?.email ||
+      undefined;
 
-    const collection = await saveCollection({
+    const collection = await upsertUserCollection(userId, {
       setId: ALBUM.setId,
       missing,
       doubles,
-      owner,
+      owner: owner ? String(owner).slice(0, 60) : undefined,
     });
 
     return NextResponse.json({ id: collection.id, collection });

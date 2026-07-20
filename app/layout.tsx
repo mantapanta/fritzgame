@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import Providers from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "FritzSwap – Sticker tauschen",
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="de">
       <body>
-        <div className="app-shell">{children}</div>
+        <Providers>
+          <div className="app-shell">{children}</div>
+        </Providers>
       </body>
     </html>
   );
