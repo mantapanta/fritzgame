@@ -6,7 +6,10 @@ import {
   teamByName,
 } from "./album";
 
-export const MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+// „gemini-flash-latest" zeigt stets auf das neueste stabile Flash-Modell
+// (aktuell Gemini 3.5 Flash) und wird bei neuen Releases automatisch mitgezogen.
+// Per GEMINI_MODEL überschreibbar (z.B. auf "gemini-3.5-flash" pinnen).
+export const MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
 
 /**
  * Liest den API-Key und entfernt häufige Copy-&-Paste-Fehler: umschließende

@@ -33,6 +33,9 @@ export async function GET() {
     message: string | null;
   } = { ok: false, status: null, reason: null, message: null };
 
+  // Verfügbare Flash-Modelle (unterstützen generateContent) für dieses Projekt.
+  let availableFlashModels: string[] = [];
+
   if (key) {
     try {
       const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(
@@ -46,6 +49,21 @@ export async function GET() {
           const body: any = await res.json();
           reason = body?.error?.status ?? body?.error?.details?.[0]?.reason ?? null;
           message = body?.error?.message ?? null;
+        } catch {
+          /* ignore parse errors */
+        }
+      } else {
+        try {
+          const body: any = await res.json();
+          const models: any[] = Array.isArray(body?.models) ? body.models : [];
+          availableFlashModels = models
+            .filter((m) =>
+              Array.isArray(m?.supportedGenerationMethods)
+                ? m.supportedGenerationMethods.includes("generateContent")
+                : true
+            )
+            .map((m) => String(m?.name || "").replace(/^models\//, ""))
+            .filter((n) => n.includes("flash"));
         } catch {
           /* ignore parse errors */
         }
@@ -71,5 +89,10 @@ export async function GET() {
     ].filter((n) => Boolean(process.env[n])),
   };
 
-  return NextResponse.json({ gemini, geminiLiveCheck: live, storage });
+  return NextResponse.json({
+    gemini,
+    geminiLiveCheck: live,
+    availableFlashModels,
+    storage,
+  });
 }
