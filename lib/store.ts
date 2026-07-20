@@ -15,12 +15,24 @@ export type Collection = {
 const PREFIX = "collection:";
 const TTL_SECONDS = 60 * 60 * 24 * 90; // 90 Tage
 
-function kvEnabled(): boolean {
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+// Redis-Zugangsdaten: akzeptiert sowohl die Vercel-KV-kompatiblen Namen als auch
+// die nativen Upstash-Namen (je nachdem, was die Vercel-Integration injiziert).
+function redisCreds(): { url: string; token: string } | null {
+  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  const token =
+    process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? { url, token } : null;
 }
 
-// Fallback-Speicher für lokale Entwicklung ohne KV (nicht persistent!).
+// Fallback-Speicher für lokale Entwicklung ohne Redis (nicht persistent!).
 const memory = new Map<string, Collection>();
+
+async function redis() {
+  const creds = redisCreds();
+  if (!creds) return null;
+  const { Redis } = await import("@upstash/redis");
+  return new Redis({ url: creds.url, token: creds.token });
+}
 
 /** Kurze, URL-freundliche ID (ohne mehrdeutige Zeichen). */
 function makeId(): string {
@@ -42,9 +54,9 @@ export async function saveCollection(
     ...data,
   };
 
-  if (kvEnabled()) {
-    const { kv } = await import("@vercel/kv");
-    await kv.set(PREFIX + collection.id, collection, { ex: TTL_SECONDS });
+  const client = await redis();
+  if (client) {
+    await client.set(PREFIX + collection.id, collection, { ex: TTL_SECONDS });
   } else {
     memory.set(collection.id, collection);
   }
@@ -55,9 +67,9 @@ export async function saveCollection(
 export async function getCollection(id: string): Promise<Collection | null> {
   if (!id) return null;
 
-  if (kvEnabled()) {
-    const { kv } = await import("@vercel/kv");
-    const value = await kv.get<Collection>(PREFIX + id);
+  const client = await redis();
+  if (client) {
+    const value = await client.get<Collection>(PREFIX + id);
     return value ?? null;
   }
 

@@ -22,7 +22,7 @@ teilen (WhatsApp & Co.) und mit anderen **tauschen**.
 
 - **Next.js 14 (App Router)**, deploybar auf **Vercel**
 - **Google Gemini** für die Bilderkennung (`lib/gemini.ts`)
-- **Vercel KV** (Redis) als Speicher; lokal ohne KV automatischer In-Memory-Fallback
+- **Upstash Redis** als Speicher; lokal ohne Redis automatischer In-Memory-Fallback
 - Album fest verdrahtet in `lib/album.ts` (leicht durch ein echtes Set ersetzbar)
 
 ## Lokal starten
@@ -38,17 +38,18 @@ Foto-Erkennung liefert eine Fehlermeldung.
 
 ## Umgebungsvariablen
 
-| Variable                        | Zweck                                        |
-| ------------------------------- | -------------------------------------------- |
-| `GEMINI_API_KEY`                | Pflicht für die Erkennung (Google AI Studio) |
-| `GEMINI_MODEL`                  | optional, Default `gemini-2.0-flash`         |
-| `KV_REST_API_URL` / `..._TOKEN` | Vercel KV; auf Vercel automatisch gesetzt    |
-| `NEXT_PUBLIC_BASE_URL`          | optional, Basis-URL für Share-Links          |
+| Variable                          | Zweck                                                       |
+| --------------------------------- | ----------------------------------------------------------- |
+| `GEMINI_API_KEY`                  | Pflicht für die Erkennung (Google AI Studio)                |
+| `GEMINI_MODEL`                    | optional, Default `gemini-2.0-flash`                        |
+| `KV_REST_API_URL` / `..._TOKEN`   | Upstash Redis (Vercel-Integration); alternativ `UPSTASH_*`  |
+| `UPSTASH_REDIS_REST_URL`/`_TOKEN` | Upstash Redis (native Namen); alternativ zu `KV_*`          |
+| `NEXT_PUBLIC_BASE_URL`            | optional, Basis-URL für Share-Links                         |
 
 ## Deploy auf Vercel
 
 1. Projekt aus diesem Repo importieren (Framework: Next.js – wird erkannt).
-2. Einen **KV/Redis-Store** anlegen und mit dem Projekt verbinden (setzt die KV-Variablen).
+2. Im **Marketplace einen Upstash-Redis-Store** anlegen und mit dem Projekt verbinden (setzt die Redis-Variablen).
 3. `GEMINI_API_KEY` als Environment Variable hinterlegen.
 4. Deployen.
 
