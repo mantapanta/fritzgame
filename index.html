@@ -205,7 +205,7 @@
                 player = { x: 300, y: 720, run: 0, vx: 0, vy: 0 };
                 ball = { x: 320, y: 700, vx: 0, vy: 0, spin: 0, spinDraw: 0, trail: [], arc: 0, high: false };
             }
-            keeper = { x: GOAL_CX, dive: GOAL_CX, diving: false, react: 0, lean: 0, dip: 0 };
+            keeper = { x: GOAL_CX, dive: GOAL_CX, diving: false, react: 0, lean: 0, dip: 0, diveDir: 1, diveT: 0 };
             defenders = spawnDefenders();
             facing = { x: 0, y: -1 };
             charging = false; power = 0;
@@ -347,22 +347,25 @@
             const aimx = aimOverride != null ? aimOverride : inputVector().x;
 
             ball.trail = []; ball.arc = 0; ball.high = false; ball.startY = ball.y;
+            // Direktes Zielen: der Ball fliegt dahin, wohin der Joystick zeigt.
+            // Effet biegt zusätzlich, Power ist schnell & gerade, Lupfer hebt an.
             let SPEED, aimBase;
-            if (shotType === 'power') { SPEED = 15 + pw * 6; aimBase = 54; ball.magnus = 0.02; ball.spin = aimx * 0.14; }
-            else if (shotType === 'lupfer') { SPEED = 10 + pw * 2.5; aimBase = 28; ball.magnus = 0.025; ball.spin = aimx * 0.25; ball.high = true; ball.lob = pw; }
-            else { SPEED = 11 + pw * 3.5; aimBase = 12; ball.magnus = 0.03; ball.spin = aimx * 0.62; }   // effet
+            if (shotType === 'power') { SPEED = 15 + pw * 6; aimBase = 120; ball.magnus = 0.02; ball.spin = aimx * 0.10; }
+            else if (shotType === 'lupfer') { SPEED = 10 + pw * 2.5; aimBase = 96; ball.magnus = 0.02; ball.spin = aimx * 0.12; ball.high = true; ball.lob = pw; }
+            else { SPEED = 11 + pw * 3.5; aimBase = 84; ball.magnus = 0.028; ball.spin = aimx * 0.42; }   // effet
 
-            const penBoost = mode === 'penalty' ? 50 : 0;   // Elfmeter: direkte Platzierung zählt mehr
-            const aimX = Math.max(GOAL_L - 12, Math.min(GOAL_R + 12, GOAL_CX + aimx * (aimBase + penBoost)));
+            const aimX = Math.max(GOAL_L - 10, Math.min(GOAL_R + 10, GOAL_CX + aimx * aimBase));
             const dx = aimX - ball.x, dy = 0 - ball.y, d = Math.hypot(dx, dy) || 1;
             ball.vx = dx / d * SPEED; ball.vy = dy / d * SPEED;
 
-            // Torwart liest die GERADE Bahn, legt sich fest (jetzt schwächer: größerer Lesefehler)
+            // Torwart liest die (gerade) Zielrichtung und wirft sich dorthin – aber
+            // mit Reaktionszeit, Tempolimit und Lesefehler -> Ecken/Effet/Pace schlagen ihn.
             const tHit = (ball.y - KEEPER_LINE) / (-ball.vy);
             const predX = ball.x + ball.vx * tHit;
             const err = (((attempts * 2654435761) >>> 12) % (KERR * 2)) - KERR;
             keeper.dive = Math.max(GOAL_L - 12, Math.min(GOAL_R + 12, predX + err));
             keeper.diving = true; keeper.react = KREACT; keeper.dip = 0;
+            keeper.diveDir = Math.sign(keeper.dive - keeper.x) || 1; keeper.diveT = 0;
             sfx.kick();
         }
 
@@ -426,8 +429,7 @@
                 else {
                     const dxk = keeper.dive - keeper.x;
                     keeper.x += Math.max(-KSPEED, Math.min(KSPEED, dxk));
-                    keeper.lean += (Math.sign(dxk) - keeper.lean) * 0.2;
-                    keeper.dip = Math.min(1, keeper.dip + 0.14);
+                    keeper.diveT = Math.min(1, keeper.diveT + 0.15);   // echtes Hechten
                 }
 
                 // Verteidiger blocken flache Schüsse
@@ -511,7 +513,7 @@
             const kit = o.kit;
             const lean = (o.lean || 0) * 9 * s;
             const run = o.run || 0, moving = o.moving;
-            softShadow(sx + lean * 0.5, sy + 2 * s, 15 * s, 6 * s, 0.34);
+            if (!o.noShadow) softShadow(sx + lean * 0.5, sy + 2 * s, 15 * s, 6 * s, 0.34);
 
             // Beine mit Schrittanimation (Stutzen in Trikotfarbe)
             for (const sign of [-1, 1]) {
@@ -679,14 +681,42 @@
             cg.addColorStop(0, '#ffffff'); cg.addColorStop(1, '#c4c4c4');
             ctx.fillStyle = cg; rrPath(lp.sx - postW / 2, lp.sy - goalH - postW / 2, (rp.sx - lp.sx) + postW, postW, postW / 2); ctx.fill();
 
+            // ===== Ziel-Hilfe: zeigt, wohin der Ball fliegt =====
+            if (phase === 'play' && canShoot()) {
+                const axx = inputVector().x;
+                const span = shotType === 'power' ? 120 : shotType === 'lupfer' ? 96 : 84;
+                const tX = Math.max(GOAL_L - 6, Math.min(GOAL_R + 6, GOAL_CX + axx * span));
+                const b = project(ball.x, ball.y), gp = project(tX, 3);
+                ctx.save();
+                ctx.setLineDash([7, 8]); ctx.strokeStyle = 'rgba(255,240,90,0.5)'; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.moveTo(b.sx, b.sy - 5 * b.sc); ctx.lineTo(gp.sx, gp.sy); ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.fillStyle = 'rgba(255,240,90,0.85)';
+                ctx.beginPath(); ctx.arc(gp.sx, gp.sy, 5, 0, 7); ctx.fill();
+                ctx.restore();
+            }
+
             // ===== Figuren (nach Tiefe sortiert) =====
             const drawKeeper = () => {
                 const p = project(keeper.x, KEEPER_LINE);
-                drawPerson(p.sx, p.sy + keeper.dip * 5 * p.sc, p.sc, {
-                    kit: kitOpp, skin: '#e8b98f', hair: '#241611',
-                    run: 0, moving: false,
-                    lean: keeper.lean * 1.7, gloves: true, phaseShot: phase === 'shot', num: '1'
-                });
+                if (phase === 'shot' && keeper.diveT > 0.03) {
+                    // Echtes Hechten: Torwart wirft sich zur Seite (rotiert + hebt ab)
+                    const t = keeper.diveT;
+                    softShadow(p.sx + keeper.diveDir * 16 * p.sc * t, p.sy + 3, (16 + 6 * t) * p.sc, 6 * p.sc, 0.3);
+                    ctx.save();
+                    ctx.translate(p.sx, p.sy - t * 12 * p.sc);
+                    ctx.rotate(keeper.diveDir * t * 1.2);
+                    drawPerson(0, 0, p.sc, {
+                        kit: kitOpp, skin: '#e8b98f', hair: '#241611',
+                        run: 0, moving: false, lean: 0, gloves: true, phaseShot: true, num: '1', noShadow: true
+                    });
+                    ctx.restore();
+                } else {
+                    drawPerson(p.sx, p.sy, p.sc, {
+                        kit: kitOpp, skin: '#e8b98f', hair: '#241611',
+                        run: 0, moving: false, lean: keeper.lean, gloves: true, phaseShot: false, num: '1'
+                    });
+                }
             };
             const drawPlayer = () => {
                 const p = project(player.x, player.y), s = p.sc;
