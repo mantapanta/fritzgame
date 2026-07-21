@@ -1,0 +1,13 @@
+{
+  "name": "fritzgame-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker relay for Street Striker online 1v1",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
