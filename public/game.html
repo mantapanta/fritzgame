@@ -1094,7 +1094,7 @@
             try { if (peer) peer.destroy(); } catch (e) {}
             try { if (wsRef) wsRef.close(); } catch (e) {}
             clearConnTimer();
-            peer = null; conn = null; wsRef = null; transport = null;
+            peer = null; conn = null; wsRef = null; transport = null; pendingHost = null;
             hideEnd();
             el('ui-layer').style.display = ''; el('hint').style.display = ''; el('reopen').style.display = '';
             paused = true; mode = 'penalty';
@@ -1156,33 +1156,63 @@
                 if (!online.active) setStatus('⏳ Keine direkte Verbindung (NAT/Firewall). Tipp: beide ins selbe WLAN.');
             }, 20000);
         }
-        // ---- PartyKit-Transport (Server-Relay über WebSocket – überall zuverlässig) ----
-        function connectParty(room, myTeam) {
+        // ---- Server-Relay über WebSocket (Cloudflare Worker – überall zuverlässig) ----
+        let pendingHost = null;   // Host wartet in der Lobby, bis der Gegner (hello) da ist
+        function connectParty(room, myTeam, isJoining) {
             setStatus('Verbinde mit Server…');
             let ws;
-            try { ws = new WebSocket('wss://' + PARTY_HOST + '/parties/main/' + room.toUpperCase()); }
+            // Lokales Testen: ws:// für localhost, sonst immer wss://
+            const proto = /^(127\.|localhost)/.test(PARTY_HOST) ? 'ws://' : 'wss://';
+            try { ws = new WebSocket(proto + PARTY_HOST + '/parties/main/' + room.toUpperCase()); }
             catch (e) { setStatus('Server-URL ungültig.'); return; }
             wsRef = ws;
-            ws.onopen = function () { setStatus('Warte auf Rolle…'); };
+            let closedByUs = false;   // wir haben bewusst geschlossen -> Status nicht überschreiben
+            ws.onopen = function () { setStatus('Verbunden – einen Moment…'); };
             ws.onmessage = function (ev) {
                 let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
                 if (m.t === 'role') {
-                    if (m.full) { setStatus('Raum ist voll.'); try { ws.close(); } catch (e) {} return; }
                     clearConnTimer();
+                    if (m.full) { setStatus('Raum ist voll.'); closedByUs = true; try { ws.close(); } catch (e) {} return; }
                     const t = { send: function (o) { try { ws.send(JSON.stringify(o)); } catch (e) {} } };
+                    if (m.isHost) {
+                        if (isJoining) {
+                            // Beitritt in leeren Raum = falscher Code oder Host ist weg.
+                            setStatus('Diesen Raum gibt es nicht. Prüf den Code!');
+                            pendingHost = null;
+                            closedByUs = true;
+                            try { ws.close(); } catch (e) {}
+                            return;
+                        }
+                        // Host: in der Lobby bleiben (Code sichtbar), auf den Gegner warten.
+                        pendingHost = { myTeam: myTeam, t: t };
+                        setStatus('✅ Raum ist offen! Teile den Code – warte auf deinen Freund…');
+                    } else {
+                        // Guest: Rolle beweist, dass der Host im Raum ist -> starten.
+                        setStatus('Verbunden!');
+                        beginOnline(false, myTeam, t);
+                    }
+                } else if (pendingHost && m.t === 'hello') {
+                    // Der Gegner ist beigetreten -> jetzt startet der Host das Match.
+                    const ph = pendingHost; pendingHost = null;
                     setStatus('Verbunden!');
-                    beginOnline(!!m.isHost, myTeam, t);
+                    beginOnline(true, ph.myTeam, ph.t);   // sendet unser hello an den Guest
+                    handleMsg(m);                          // setzt oppTeam + startMatch()
                 } else { handleMsg(m); }
             };
-            ws.onclose = function () { if (online.active) onlineLeave('Verbindung getrennt.'); else setStatus('Verbindung geschlossen.'); };
-            ws.onerror = function () { setStatus('Server-Fehler – deployed & URL korrekt?'); };
-            armTimeout();
+            ws.onclose = function () {
+                if (closedByUs) return;   // Meldung (z.B. "Raum gibt es nicht") stehen lassen
+                if (online.active) { onlineLeave('Verbindung getrennt.'); }
+                else if (pendingHost) { pendingHost = null; setStatus('Verbindung geschlossen – nochmal versuchen.'); }
+                else { setStatus('Verbindung geschlossen.'); }
+            };
+            ws.onerror = function () { setStatus('Server-Fehler – Verbindung klappt nicht.'); };
+            if (isJoining) armTimeout();   // nur der Beitritt hat einen Timeout; der Host darf lange warten
         }
 
         function hostRoom(myTeam) {
             const code = genCode();
             el('mp-codebox').style.display = 'block'; el('mp-codebox').textContent = code;
-            if (PARTY_HOST) { connectParty(code, myTeam); return; }
+            if (PARTY_HOST) { connectParty(code, myTeam, false); return; }
             // Fallback: P2P (PeerJS) – zuverlässig nur im selben WLAN
             if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
             setStatus('Warte auf Gegner – Code teilen! (P2P)');
@@ -1195,7 +1225,7 @@
         function joinRoom(code, myTeam) {
             code = (code || '').trim();
             if (!code || code.length < 4) { setStatus('Bitte 4-stelligen Code eingeben.'); return; }
-            if (PARTY_HOST) { connectParty(code, myTeam); return; }
+            if (PARTY_HOST) { connectParty(code, myTeam, true); return; }
             if (typeof Peer === 'undefined') { setStatus('Netzwerk-Lib nicht geladen – Seite neu laden.'); return; }
             setStatus('Verbinde… (P2P)');
             peer = new Peer(null, peerConfig());
