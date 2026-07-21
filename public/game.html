@@ -290,9 +290,9 @@
         let transport = null;                 // { send(obj) } – PartyKit-WS, PeerJS oder Test-Loopback
         function netSend(o) { if (transport) transport.send(o); }
         const GOAL_HALF = (GOAL_R - GOAL_L) / 2;
-        // Nach PartyKit-Deploy hier den Host eintragen (ohne https://), z.B.
-        // 'fritzgame-relay.DEINNUTZER.partykit.dev'. Leer => Fallback auf P2P (gleiches WLAN).
-        const PARTY_HOST = '';
+        // Relay-Server (Cloudflare Worker, siehe worker/README.md).
+        // Leer => Fallback auf P2P (nur gleiches WLAN zuverlässig).
+        const PARTY_HOST = 'fritzgames.workers.dev';
 
         // ===== vorberechnete Ränge =====
         const crowd = [];
