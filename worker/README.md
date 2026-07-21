@@ -19,7 +19,7 @@ Am Ende zeigt wrangler die URL an, z. B.:
 https://fritzgame-relay.DEIN-SUBDOMAIN.workers.dev
 ```
 
-Diesen Host (ohne `https://`) in `../index.html` bei `PARTY_HOST` eintragen:
+Diesen Host (ohne `https://`) in `../public/game.html` bei `PARTY_HOST` eintragen:
 
 ```js
 const PARTY_HOST = 'fritzgame-relay.DEIN-SUBDOMAIN.workers.dev';
