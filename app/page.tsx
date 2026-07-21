@@ -6,7 +6,7 @@ export default function Hub() {
       <div className="center stack" style={{ gap: 6, marginTop: 28 }}>
         <div className="brand">Fritz-Liga</div>
         <p className="muted" style={{ margin: 0 }}>
-          Spielen oder Sticker tauschen – was möchtest du?
+          Was willst du machen?
         </p>
       </div>
 
@@ -15,7 +15,7 @@ export default function Hub() {
           <span className="hub-emoji">⚽</span>
           <span className="hub-text">
             <b>Street Striker</b>
-            <span>Dribble &amp; Score – das Fußballspiel</span>
+            <span>Spiel Fußball! ⚽</span>
           </span>
         </a>
 
@@ -23,7 +23,7 @@ export default function Hub() {
           <span className="hub-emoji">🔁</span>
           <span className="hub-text">
             <b>FritzSwap</b>
-            <span>Panini-Sticker erfassen &amp; tauschen</span>
+            <span>Tausche deine Sticker!</span>
           </span>
         </Link>
       </div>

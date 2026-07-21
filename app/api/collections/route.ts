@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     const userId = session?.user?.id;
     if (!userId) {
       return NextResponse.json(
-        { error: "Nicht angemeldet." },
+        { error: "Melde dich zuerst an!" },
         { status: 401 }
       );
     }
@@ -42,8 +42,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ id: collection.id, collection });
   } catch (err: any) {
+    console.error("save collection failed:", err);
     return NextResponse.json(
-      { error: err?.message || "Speichern fehlgeschlagen." },
+      { error: "Speichern hat nicht geklappt. Versuch es nochmal!" },
       { status: 500 }
     );
   }

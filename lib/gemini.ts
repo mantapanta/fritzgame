@@ -13,6 +13,15 @@ import {
 export const MODEL = process.env.GEMINI_MODEL || "gemini-flash-lite-latest";
 
 /**
+ * Fehler mit kindgerechter Botschaft, die gefahrlos bis in die UI durchgereicht
+ * werden darf (keine technischen Details / Markennamen). Die API-Routen zeigen
+ * nur .friendly-Fehler wortwörtlich an, alles andere wird generisch maskiert.
+ */
+export class FriendlyError extends Error {
+  friendly = true as const;
+}
+
+/**
  * Liest den API-Key und entfernt häufige Copy-&-Paste-Fehler: umschließende
  * Anführungszeichen sowie Leerzeichen/Zeilenumbrüche.
  */
@@ -27,8 +36,9 @@ export function getGeminiKey(): string {
 function client(): GoogleGenerativeAI {
   const key = getGeminiKey();
   if (!key) {
-    throw new Error(
-      "GEMINI_API_KEY ist nicht gesetzt. Bitte in den Umgebungsvariablen hinterlegen (siehe .env.example)."
+    console.error("GEMINI_API_KEY ist nicht gesetzt (siehe .env.example).");
+    throw new FriendlyError(
+      "Die Foto-Erkennung macht gerade Pause. Sag Fritz Bescheid!"
     );
   }
   return new GoogleGenerativeAI(key);
@@ -65,8 +75,8 @@ function extractJson(text: string): any {
         }
       }
     }
-    throw new Error(
-      "Die Antwort der Bilderkennung war unvollständig. Bitte das Foto erneut aufnehmen."
+    throw new FriendlyError(
+      "Das Foto konnte nicht gelesen werden. Mach es nochmal!"
     );
   }
 }
@@ -90,11 +100,15 @@ async function generateWithRetry(
         /\b(429|500|502|503|504)\b/.test(msg) ||
         /overload|unavailable|high demand|try again|temporarily/i.test(msg);
       if (i === attempts - 1 && transient) {
-        throw new Error(
-          "Gemini ist gerade überlastet. Bitte in ein paar Sekunden erneut versuchen."
+        console.error("Bilderkennung überlastet:", msg);
+        throw new FriendlyError(
+          "Gerade ist viel los. Warte kurz. Dann nochmal!"
         );
       }
-      if (!transient) throw e;
+      if (!transient) {
+        console.error("Bilderkennung fehlgeschlagen:", e);
+        throw e;
+      }
       await sleep(800 * Math.pow(2, i)); // 0.8s, 1.6s, ...
     }
   }

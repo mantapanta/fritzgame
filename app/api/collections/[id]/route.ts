@@ -10,7 +10,7 @@ export async function GET(
   const collection = await getCollection(params.id);
   if (!collection) {
     return NextResponse.json(
-      { error: "Sammlung nicht gefunden." },
+      { error: "Diese Sammlung gibt es nicht." },
       { status: 404 }
     );
   }

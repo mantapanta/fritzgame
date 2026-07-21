@@ -2,23 +2,22 @@
 
 import { useEffect, useState } from "react";
 
-// Kuratierte, bewusst nicht-banale Fußball-/WM-Fakten.
+// Kurze Fußball-Fakten für Kinder (unter 10) – max. ~10 Wörter.
 export const FOOTBALL_FACTS: string[] = [
-  "Das schnellste WM-Tor der Geschichte fiel nach nur 10,8 Sekunden – Hakan Şükür für die Türkei, 2002.",
-  "Der gestohlene WM-Pokal wurde 1966 in London von einem Hund namens „Pickles“ unter einer Hecke gefunden.",
-  "Die WM 2026 ist die erste mit 48 Teams – und die erste mit drei Gastgebern: Kanada, Mexiko und die USA.",
-  "Mexiko richtet 2026 zum dritten Mal WM-Spiele aus (1970, 1986, 2026) – das schaffte noch kein anderes Land.",
-  "Miroslav Klose hält mit 16 Treffern den WM-Torrekord – erzielt über vier Turniere.",
-  "Nur acht Nationen haben je eine WM gewonnen. Schaffst du es, sie alle aufzuzählen?",
-  "Beim „Maracanazo“ 1950 verstummten fast 200.000 Zuschauer, als Uruguay Brasilien im Finale schlug.",
-  "Das höchste WM-Ergebnis eines Teams: Ungarn schlug El Salvador 1982 mit 10:1.",
-  "Im ersten WM-Finale 1930 spielte man je Halbzeit mit einem anderen Ball – einer pro Nation.",
-  "Roger Milla tanzte 1990 mit 38 Jahren an der Eckfahne – und wurde zum Kult.",
-  "Panini bringt seit der WM 1970 in Mexiko offizielle Sammelalben heraus.",
-  "Mit 980 Stickern ist das WM-2026-Album das größte WM-Album, das es je gab.",
-  "Pelé wurde 1958 mit 17 Jahren jüngster WM-Torschütze – und direkt Weltmeister.",
-  "1994 in den USA stieß man mittags bei über 40 °C an – Sonnenschutz inklusive.",
-  "Der erste WM-Treffer überhaupt: Lucien Laurent für Frankreich, 1930 gegen Mexiko.",
+  "Das schnellste WM-Tor fiel nach 11 Sekunden! ⚡",
+  "Ein Hund namens Pickles fand mal den WM-Pokal! 🐶",
+  "2026 spielen zum ersten Mal 48 Teams mit!",
+  "Miroslav Klose schoss 16 WM-Tore. Rekord! 🥇",
+  "Dein Album hat 980 Sticker. Wahnsinn! 😲",
+  "Pelé war Weltmeister mit nur 17 Jahren!",
+  "Die WM 2026 ist in 3 Ländern gleichzeitig!",
+  "Panini-Sticker gibt es seit über 50 Jahren!",
+  "Ungarn gewann mal ein WM-Spiel 10:1! 😲",
+  "Roger Milla tanzte nach jedem Tor. 💃",
+  "Nur 8 Länder haben je die WM gewonnen!",
+  "Brasilien war 5-mal Weltmeister. 🏆",
+  "Elfmeter: 11 Meter bis zum Tor.",
+  "Tauschen macht dein Album voll! 🔁",
 ];
 
 function pickStart(len: number): number {
@@ -28,7 +27,7 @@ function pickStart(len: number): number {
 
 export default function FactLoader({
   progress,
-  title = "Wird ausgewertet …",
+  title = "Einen Moment …",
   subtitle,
 }: {
   /** 0..1 für determinierten Ring; weglassen für unendliches Drehen. */
@@ -57,6 +56,15 @@ export default function FactLoader({
     <div className="factloader">
       <div className={`ring ${determinate ? "" : "ring-spin"}`}>
         <svg viewBox="0 0 120 120" width="140" height="140">
+          <defs>
+            <linearGradient id="foilring" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#9a7b1a" />
+              <stop offset="35%" stopColor="#f6e27a" />
+              <stop offset="55%" stopColor="#d4af37" />
+              <stop offset="80%" stopColor="#fff6c9" />
+              <stop offset="100%" stopColor="#9a7b1a" />
+            </linearGradient>
+          </defs>
           <circle
             cx="60"
             cy="60"
@@ -70,7 +78,7 @@ export default function FactLoader({
             cy="60"
             r={R}
             fill="none"
-            stroke="var(--accent)"
+            stroke="url(#foilring)"
             strokeWidth="10"
             strokeLinecap="round"
             strokeDasharray={C}
@@ -95,7 +103,7 @@ export default function FactLoader({
       )}
 
       <div className="fact-card">
-        <div className="fact-kicker">⚽ Wusstest du …</div>
+        <div className="fact-kicker">⚽ Wusstest du das?</div>
         <p key={idx} className="fact-text">
           {FOOTBALL_FACTS[idx]}
         </p>

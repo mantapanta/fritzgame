@@ -27,7 +27,7 @@ export default function SwapHome() {
     <div className="stack">
       <header className="topbar">
         <Link href="/" className="back-link">
-          ← Menü
+          ← Zurück
         </Link>
         <span className="pill">FritzSwap</span>
       </header>
@@ -37,7 +37,7 @@ export default function SwapHome() {
           Fritz<span className="swap">Swap</span>
         </div>
         <p className="muted" style={{ margin: 0 }}>
-          Fehlende &amp; doppelte Sticker automatisch erkennen · per Link tauschen.
+          Tausche Sticker mit deinen Freunden!
         </p>
       </div>
 
@@ -55,7 +55,7 @@ export default function SwapHome() {
       ) : authed ? (
         <div className="stack">
           <Link href="/capture" className="btn btn-primary">
-            📷 Sticker erfassen
+            📷 Album fotografieren
           </Link>
           {collectionId && (
             <Link href={`/collection/${collectionId}`} className="btn">
@@ -63,30 +63,29 @@ export default function SwapHome() {
             </Link>
           )}
           <Link href="/trade" className="btn btn-ghost">
-            🔁 Mit jemandem tauschen
+            🔁 Tauschen
           </Link>
         </div>
       ) : (
         <div className="stack">
           <Link href="/login" className="btn btn-primary">
-            Mit Code anmelden
+            🔑 Anmelden
           </Link>
-          <p className="muted center" style={{ margin: 0, fontSize: 13 }}>
-            Du brauchst deinen 6-stelligen Zugangscode (bekommst du von Fritz).
+          <p className="muted center" style={{ margin: 0, fontSize: 15 }}>
+            Deinen Code bekommst du von Fritz.
           </p>
         </div>
       )}
 
       <div className="card">
-        <h3 style={{ marginTop: 0 }}>So funktioniert&apos;s</h3>
+        <h3 style={{ marginTop: 0 }}>So geht&apos;s:</h3>
         <ol
-          className="muted"
-          style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}
+          style={{ margin: 0, paddingLeft: 18, lineHeight: 2, fontSize: 16 }}
         >
-          <li>Nur die Seiten fotografieren, auf denen dir Sticker fehlen.</li>
-          <li>Doppelte Sticker ausgelegt abfotografieren.</li>
-          <li>Du bekommst einen Link – teile ihn per WhatsApp.</li>
-          <li>Öffne den Link eines anderen: die App zeigt, was ihr tauschen könnt.</li>
+          <li>📷 Fotografiere die Seiten mit Lücken.</li>
+          <li>🔁 Fotografiere deine doppelten Sticker.</li>
+          <li>🔗 Du bekommst einen Link.</li>
+          <li>🤝 Schick ihn einem Freund. Fertig!</li>
         </ol>
       </div>
 
@@ -95,7 +94,7 @@ export default function SwapHome() {
           className="btn btn-ghost"
           onClick={() => signOut({ redirectTo: "/swap" })}
         >
-          {name ? `Abmelden (${name})` : "Abmelden"}
+          {name ? `🚪 Abmelden (${name})` : "🚪 Abmelden"}
         </button>
       )}
     </div>

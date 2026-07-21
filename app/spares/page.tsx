@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import CameraCapture, { type Quality } from "@/components/CameraCapture";
 import FactLoader from "@/components/FactLoader";
+import ChipList from "@/components/ChipList";
+import AddSticker from "@/components/AddSticker";
+import Steps from "@/components/Steps";
 import { codeSort } from "@/lib/album";
 import { clearCaptureMissing, getCaptureMissing } from "@/lib/client";
 
@@ -18,6 +21,8 @@ export default function SparesPage() {
   const [owner, setOwner] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastRemoved, setLastRemoved] = useState<string | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function recognize(dataUrl: string) {
     setPhase("recognizing");
@@ -29,7 +34,7 @@ export default function SparesPage() {
         body: JSON.stringify({ images: [dataUrl] }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Erkennung fehlgeschlagen.");
+      if (!res.ok) throw new Error(data?.error || "Das hat nicht geklappt.");
       const found: string[] = data.doubles || [];
       setDoubles((prev) =>
         Array.from(new Set([...prev, ...found])).sort(codeSort)
@@ -37,19 +42,41 @@ export default function SparesPage() {
       setShots((s) => s + 1);
       setNote(
         found.length
-          ? `${found.length} Nummer(n) auf diesem Foto erkannt.`
-          : "Keine lesbare Nummer auf diesem Foto gefunden."
+          ? `Super! ${found.length} ${found.length === 1 ? "Nummer" : "Nummern"} gefunden. 🎉`
+          : "Keine Nummer gefunden. Mach das Foto neu!"
       );
       setPhase("idle");
     } catch (e: any) {
-      setError(e?.message || "Erkennung fehlgeschlagen.");
+      setError(e?.message || "Das hat nicht geklappt. Probier's nochmal!");
       setPhase("idle");
     }
   }
 
   function handleCapture(dataUrl: string, quality: Quality) {
-    if (!quality.ok) setNote(quality.reason || "Bildqualität könnte besser sein.");
+    if (!quality.ok) setNote(quality.reason || "Das Foto ist unscharf.");
     recognize(dataUrl);
+  }
+
+  function removeCode(code: string) {
+    setDoubles((prev) => prev.filter((c) => c !== code));
+    setLastRemoved(code);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setLastRemoved(null), 6000);
+  }
+
+  function undoRemove() {
+    if (!lastRemoved) return;
+    const code = lastRemoved;
+    setDoubles((prev) =>
+      prev.includes(code) ? prev : [...prev, code].sort(codeSort)
+    );
+    setLastRemoved(null);
+  }
+
+  function addCode(code: string) {
+    setDoubles((prev) =>
+      prev.includes(code) ? prev : [...prev, code].sort(codeSort)
+    );
   }
 
   async function finish() {
@@ -67,11 +94,11 @@ export default function SparesPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Speichern fehlgeschlagen.");
+      if (!res.ok) throw new Error(data?.error || "Speichern hat nicht geklappt.");
       clearCaptureMissing();
       router.push(`/collection/${data.id}`);
     } catch (e: any) {
-      setError(e?.message || "Speichern fehlgeschlagen.");
+      setError(e?.message || "Speichern hat nicht geklappt. Versuch es nochmal!");
       setPhase("idle");
     }
   }
@@ -79,35 +106,31 @@ export default function SparesPage() {
   return (
     <div className="stack">
       <header className="topbar">
-        <Link href="/swap" className="back-link">
-          ← FritzSwap
+        <Link href="/capture" className="back-link">
+          ← Zurück
         </Link>
-        <span className="pill">Doppelte erfassen</span>
+        <span className="pill">Schritt 2 von 3</span>
       </header>
 
+      <Steps current={2} />
+
       <div className="center">
-        <h2 style={{ margin: 0 }}>Doppelte Sticker</h2>
-        <p className="muted" style={{ margin: 0 }}>
-          So werden die Nummern am besten erkannt:
-        </p>
+        <h2 style={{ margin: 0 }}>Deine doppelten Sticker 🔁</h2>
       </div>
 
       {(phase === "camera" || phase === "idle") && (
         <div className="card">
-          <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+          <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 2, fontSize: 16 }}>
             <li>
-              Sticker mit der <b>Rückseite nach oben</b> hinlegen (die Seite mit
-              der Nummer).
+              Dreh die Sticker um. <b>Die Nummer muss oben sein!</b>
             </li>
             <li>
-              <b>Maximal 9 Stück</b> eng in ein <b>3×3-Raster</b> legen (hochkant
-              oder quer – egal).
+              <b>Höchstens 9 Sticker.</b> Ein Sticker pro Kästchen im Bild.
             </li>
-            <li>Formatfüllend fotografieren – nutze das eingeblendete Raster.</li>
+            <li>Alle Sticker müssen ins Bild passen.</li>
           </ol>
-          <p className="muted" style={{ margin: "8px 0 0", fontSize: 13 }}>
-            Mehr als 9 pro Foto? Dann wird die Auflösung je Sticker zu klein zum
-            Lesen. Lieber mehrere Fotos machen.
+          <p className="muted" style={{ margin: "8px 0 0", fontSize: 14 }}>
+            Mehr als 9? Mach einfach noch ein Foto!
           </p>
         </div>
       )}
@@ -119,16 +142,16 @@ export default function SparesPage() {
         <CameraCapture
           onCapture={handleCapture}
           gridOverlay
-          shutterLabel={shots ? "Weiteres Foto (max. 9)" : "Doppelte fotografieren"}
+          shutterLabel={shots ? "📷 Noch ein Foto" : "📷 Sticker fotografieren"}
         />
       )}
 
       {phase === "recognizing" && (
-        <FactLoader title="Nummern werden gelesen …" />
+        <FactLoader title="Ich lese die Nummern …" />
       )}
 
       {phase === "saving" && (
-        <FactLoader title="Sammlung wird gespeichert …" />
+        <FactLoader title="Dein Link wird gebaut …" />
       )}
 
       <div className="card stack">
@@ -143,32 +166,42 @@ export default function SparesPage() {
           </div>
         </div>
         {doubles.length > 0 && (
-          <div className="grid-numbers">
-            {doubles.map((n) => (
-              <span key={n} className="chip give">
-                {n}
-              </span>
-            ))}
-          </div>
+          <p className="muted" style={{ margin: 0, fontSize: 14 }}>
+            Falsche Nummer dabei? Tipp sie an!
+          </p>
+        )}
+        <ChipList codes={doubles} variant="give" onRemove={removeCode} />
+        {(phase === "camera" || phase === "idle") && (
+          <AddSticker onAdd={addCode} />
         )}
       </div>
 
+      {lastRemoved && (
+        <div className="toast warn" style={{ display: "flex", alignItems: "center", gap: 10, justifyContent: "space-between" }}>
+          <span>{lastRemoved} ist weg.</span>
+          <button className="shot-action" onClick={undoRemove}>↩️ Zurückholen</button>
+        </div>
+      )}
+
       {(phase === "idle" || phase === "camera") && (
         <div className="stack">
-          <input
-            className="textarea"
-            style={{ minHeight: 0, height: 48 }}
-            placeholder="Dein Name (optional, für den Tausch-Chat)"
-            value={owner}
-            maxLength={40}
-            onChange={(e) => setOwner(e.target.value)}
-          />
+          <label style={{ fontWeight: 700, fontSize: 16 }}>
+            Wie heißt du?
+            <input
+              className="textarea"
+              style={{ minHeight: 0, height: 56, marginTop: 6 }}
+              placeholder="Dein Name"
+              value={owner}
+              maxLength={40}
+              onChange={(e) => setOwner(e.target.value)}
+            />
+          </label>
           <button
             className="btn btn-success"
             onClick={finish}
             disabled={phase === ("saving" as Phase)}
           >
-            Fertig – Sammlung &amp; Link erstellen
+            ✅ Fertig! Link erstellen
           </button>
         </div>
       )}
