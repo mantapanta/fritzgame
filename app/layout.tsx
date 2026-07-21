@@ -1,6 +1,20 @@
 import type { Metadata, Viewport } from "next";
+import { Lilita_One, Nunito } from "next/font/google";
 import "./globals.css";
 import Providers from "@/components/Providers";
+
+const display = Lilita_One({
+  weight: "400",
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const bodyFont = Nunito({
+  subsets: ["latin", "latin-ext"],
+  variable: "--font-body",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "FritzSwap – Sticker tauschen",
@@ -9,11 +23,11 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0b1220",
+  themeColor: "#e30613",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  maximumScale: 5,
+  userScalable: true,
 };
 
 export default function RootLayout({
@@ -22,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="de">
+    <html lang="de" className={`${display.variable} ${bodyFont.variable}`}>
       <body>
         <Providers>
           <div className="app-shell">{children}</div>

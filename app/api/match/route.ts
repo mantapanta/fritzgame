@@ -15,7 +15,7 @@ export async function GET(req: Request) {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId) {
-    return NextResponse.json({ error: "Nicht angemeldet." }, { status: 401 });
+    return NextResponse.json({ error: "Melde dich zuerst an!" }, { status: 401 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
   const mineId = await getUserCollectionId(userId);
   if (!mineId) {
     return NextResponse.json(
-      { error: "Du hast noch keine eigene Sammlung erfasst." },
+      { error: "Du brauchst erst deine eigene Sammlung." },
       { status: 409 }
     );
   }
@@ -36,19 +36,19 @@ export async function GET(req: Request) {
 
   if (!theirs) {
     return NextResponse.json(
-      { error: "Sammlung des Gegenübers nicht gefunden." },
+      { error: "Diese Sammlung gibt es nicht. Prüf den Link!" },
       { status: 404 }
     );
   }
   if (!mine) {
     return NextResponse.json(
-      { error: "Eigene Sammlung nicht gefunden." },
+      { error: "Deine Sammlung wurde nicht gefunden." },
       { status: 404 }
     );
   }
   if (theirs.id === mine.id) {
     return NextResponse.json(
-      { error: "Das ist deine eigene Sammlung." },
+      { error: "Das ist dein eigener Link! 😄" },
       { status: 400 }
     );
   }

@@ -50,17 +50,17 @@ function assessQuality(ctx: CanvasRenderingContext2D, w: number, h: number): Qua
   let reason: string | undefined;
   if (brightness < 45) {
     ok = false;
-    reason = "Zu dunkel – mehr Licht oder näher ran.";
+    reason = "Zu dunkel! 💡 Mach Licht an.";
   } else if (sharpness < 45) {
     ok = false;
-    reason = "Wirkt unscharf – Kamera ruhig halten und scharfstellen.";
+    reason = "Verwackelt! 🤳 Halte die Kamera still.";
   }
   return { brightness, sharpness, ok, reason };
 }
 
 export default function CameraCapture({
   onCapture,
-  shutterLabel = "Foto aufnehmen",
+  shutterLabel = "📷 Foto machen",
   disabled,
   gridOverlay,
 }: Props) {
@@ -98,7 +98,7 @@ export default function CameraCapture({
       } catch (e: any) {
         setUseFallback(true);
         setError(
-          "Kamera nicht verfügbar – du kannst stattdessen ein Foto auswählen."
+          "Die Kamera geht nicht. Such ein Foto aus! 🖼️"
         );
       }
     }

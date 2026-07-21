@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import FactLoader from "@/components/FactLoader";
+import ChipList from "@/components/ChipList";
+import Steps from "@/components/Steps";
 import { ALBUM } from "@/lib/album";
 import type { Collection } from "@/lib/store";
 
@@ -26,10 +29,10 @@ export default function CollectionPage() {
       try {
         const res = await fetch(`/api/collections/${id}`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || "Nicht gefunden.");
+        if (!res.ok) throw new Error(data?.error || "Diese Sammlung gibt es nicht.");
         setCollection(data.collection);
       } catch (e: any) {
-        setError(e?.message || "Sammlung konnte nicht geladen werden.");
+        setError(e?.message || "Diese Sammlung gibt es nicht. Prüf den Link!");
       } finally {
         setLoading(false);
       }
@@ -39,7 +42,7 @@ export default function CollectionPage() {
   const isMine = myId === id;
 
   async function share() {
-    const text = `Meine Sticker-Sammlung (${ALBUM.name}). Öffne den Link, um zu sehen, was wir tauschen können:`;
+    const text = `Meine Sticker-Sammlung! Tipp auf den Link. Dann siehst du, was wir tauschen können:`;
     if (navigator.share) {
       try {
         await navigator.share({ title: "FritzSwap", text, url: shareUrl });
@@ -64,9 +67,8 @@ export default function CollectionPage() {
 
   if (loading) {
     return (
-      <div className="card center stack" style={{ alignItems: "center", marginTop: 40 }}>
-        <div className="spinner" />
-        <div className="muted">Sammlung wird geladen …</div>
+      <div className="stack" style={{ marginTop: 24 }}>
+        <FactLoader title="Ich hole die Sammlung …" />
       </div>
     );
   }
@@ -74,7 +76,7 @@ export default function CollectionPage() {
   if (error || !collection) {
     return (
       <div className="stack" style={{ marginTop: 40 }}>
-        <div className="toast err">{error || "Sammlung nicht gefunden."}</div>
+        <div className="toast err">{error || "Diese Sammlung gibt es nicht."}</div>
         <Link href="/" className="btn">
           Zur Startseite
         </Link>
@@ -86,10 +88,12 @@ export default function CollectionPage() {
     <div className="stack">
       <header className="topbar">
         <Link href="/swap" className="back-link">
-          ← Start
+          ← Zurück
         </Link>
         <span className="pill">{isMine ? "Meine Sammlung" : "Sammlung"}</span>
       </header>
+
+      {isMine && <Steps current={3} />}
 
       <div className="center">
         <h2 style={{ margin: 0 }}>
@@ -104,43 +108,42 @@ export default function CollectionPage() {
         <div className="stats-row">
           <div className="stat">
             <b style={{ color: "var(--accent-2)" }}>{collection.doubles.length}</b>
-            <span>Doppelte</span>
+            <span>Doppelt</span>
           </div>
           <div className="stat">
             <b style={{ color: "var(--need)" }}>{collection.missing.length}</b>
-            <span>Fehlend</span>
+            <span>Fehlen</span>
           </div>
           <div className="stat">
             <b>
               {ALBUM.totalStickers - collection.missing.length}/
               {ALBUM.totalStickers}
             </b>
-            <span>Komplett</span>
+            <span>Im Album</span>
           </div>
         </div>
       </div>
 
       {isMine ? (
         <div className="card stack">
-          <h3 style={{ margin: 0 }}>Teilen &amp; tauschen</h3>
-          <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-            Schick diesen Link an Freunde. Wer ihn öffnet, sieht sofort, welche
-            Sticker ihr tauschen könnt.
+          <h3 style={{ margin: 0 }}>Schick den Link deinen Freunden! 📤</h3>
+          <p className="muted" style={{ margin: 0, fontSize: 15 }}>
+            Dein Freund tippt drauf. Dann seht ihr, was ihr tauschen könnt.
           </p>
           <button className="btn btn-primary" onClick={share}>
-            📤 Link teilen
+            📤 Link schicken
           </button>
           <button className="btn" onClick={copy}>
-            {copied ? "✓ Kopiert" : "🔗 Link kopieren"}
+            {copied ? "✓ Kopiert!" : "🔗 Link kopieren"}
           </button>
           <Link href="/trade" className="btn btn-ghost">
-            Link von jemand anderem prüfen
+            Ich habe einen Link bekommen 📬
           </Link>
         </div>
       ) : (
         <div className="card stack">
-          <p className="muted" style={{ margin: 0, fontSize: 14 }}>
-            Vergleiche diese Sammlung mit deiner eigenen.
+          <p className="muted" style={{ margin: 0, fontSize: 15 }}>
+            Das ist die Sammlung von {collection.owner || "deinem Freund"}.
           </p>
           <Link
             href={`/trade?theirs=${collection.id}`}
@@ -150,35 +153,23 @@ export default function CollectionPage() {
           </Link>
           {!myId && (
             <Link href="/capture" className="btn btn-ghost">
-              Zuerst eigenes Album erfassen
+              📷 Erst mein Album fotografieren
             </Link>
           )}
         </div>
       )}
 
       <details className="card">
-        <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-          Doppelte anzeigen ({collection.doubles.length})
-        </summary>
-        <div className="grid-numbers" style={{ marginTop: 12 }}>
-          {collection.doubles.map((n) => (
-            <span key={n} className="chip give">
-              {n}
-            </span>
-          ))}
+        <summary>Meine Doppelten ({collection.doubles.length})</summary>
+        <div style={{ marginTop: 12 }}>
+          <ChipList codes={collection.doubles} variant="give" />
         </div>
       </details>
 
       <details className="card">
-        <summary style={{ cursor: "pointer", fontWeight: 700 }}>
-          Fehlende anzeigen ({collection.missing.length})
-        </summary>
-        <div className="grid-numbers" style={{ marginTop: 12 }}>
-          {collection.missing.map((n) => (
-            <span key={n} className="chip get">
-              {n}
-            </span>
-          ))}
+        <summary>Die fehlen mir ({collection.missing.length})</summary>
+        <div style={{ marginTop: 12 }}>
+          <ChipList codes={collection.missing} variant="get" />
         </div>
       </details>
     </div>

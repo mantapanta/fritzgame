@@ -11,7 +11,7 @@ export async function POST(req: Request) {
 
     if (!Array.isArray(images) || images.length === 0) {
       return NextResponse.json(
-        { error: "Kein Bild übermittelt." },
+        { error: "Kein Foto da. Mach erst ein Foto!" },
         { status: 400 }
       );
     }
@@ -19,9 +19,10 @@ export async function POST(req: Request) {
     const result = await recognizeAlbumPhoto(images as string[]);
     return NextResponse.json(result);
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Erkennung fehlgeschlagen." },
-      { status: 500 }
-    );
+    console.error("recognize failed:", err);
+    const msg = err?.friendly
+      ? err.message
+      : "Das hat nicht geklappt. Versuch es gleich nochmal!";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
